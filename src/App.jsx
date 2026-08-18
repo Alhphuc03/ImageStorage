@@ -27,6 +27,18 @@ import {
   loadFoldersFromDB, 
   saveFoldersToDB 
 } from './services/db';
+import {
+  fetchFoldersApi,
+  saveFolderApi,
+  deleteFolderApi,
+  saveAllFoldersApi,
+  fetchPhotosApi,
+  addPhotosApi,
+  updatePhotoApi,
+  deletePhotoApi,
+  clearAllPhotosApi,
+  bulkSavePhotosApi
+} from './services/api';
 import { getStoredCloudinaryConfig } from './services/cloudinary';
 import { speechAssistant } from './services/speech';
 
@@ -40,7 +52,6 @@ export default function App() {
   const [speechEnabled, setSpeechEnabled] = useState(prefs?.speechEnabled !== false);
 
   // 2. Chế độ Xem ảnh (Viewer) vs Chế độ Quản trị (Edit Mode)
-  // Mặc định trên Mobile là Chế độ Xem thuần túy (chọn album rồi xem ảnh)
   const [isEditMode, setIsEditMode] = useState(() => {
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {
       return false;
@@ -48,25 +59,66 @@ export default function App() {
     return true;
   });
 
-  // 3. Dữ liệu Thư mục, Ảnh & Cấu hình Cloudinary (Ưu tiên nạp dữ liệu thật của người dùng)
+  // 3. Dữ liệu Thư mục, Ảnh & Cấu hình Cloudinary
   const [folders, setFolders] = useState(() => getStoredFolders() || []);
   const [photos, setPhotos] = useState(() => getStoredPhotos() || []);
   const [activeFolderId, setActiveFolderId] = useState(null);
   const [cloudinaryConfig, setCloudinaryConfig] = useState(() => getStoredCloudinaryConfig() || {});
 
-  // Tải dữ liệu thật dung lượng cao từ IndexedDB khi mở ứng dụng
+  // Tải dữ liệu từ MongoDB API khi mở ứng dụng (ưu tiên MongoDB, fallback sang IndexedDB/LocalStorage)
   useEffect(() => {
     let isMounted = true;
-    loadPhotosFromDB().then((dbPhotos) => {
-      if (isMounted && Array.isArray(dbPhotos) && dbPhotos.length > 0) {
-        setPhotos(dbPhotos);
+
+    async function initializeData() {
+      // 1. Tải nhanh từ IndexedDB trước để người dùng thấy dữ liệu tức thì
+      const [localPhotos, localFolders] = await Promise.all([
+        loadPhotosFromDB(),
+        loadFoldersFromDB()
+      ]);
+      
+      if (isMounted) {
+        if (Array.isArray(localPhotos) && localPhotos.length > 0) {
+          setPhotos(localPhotos);
+        }
+        if (Array.isArray(localFolders) && localFolders.length > 0) {
+          setFolders(localFolders);
+        }
       }
-    });
-    loadFoldersFromDB().then((dbFolders) => {
-      if (isMounted && Array.isArray(dbFolders) && dbFolders.length > 0) {
-        setFolders(dbFolders);
+
+      // 2. Đồng bộ dữ liệu trực tuyến từ MongoDB Atlas
+      try {
+        const [apiFolders, apiPhotos] = await Promise.all([
+          fetchFoldersApi(),
+          fetchPhotosApi()
+        ]);
+
+        if (!isMounted) return;
+
+        // Nếu MongoDB có dữ liệu
+        if (Array.isArray(apiFolders) && apiFolders.length > 0) {
+          setFolders(apiFolders);
+          saveFolders(apiFolders);
+          saveFoldersToDB(apiFolders);
+        } else if (Array.isArray(localFolders) && localFolders.length > 0 && Array.isArray(apiFolders)) {
+          // Nếu MongoDB rỗng mà Local có data, đồng bộ local lên MongoDB
+          saveAllFoldersApi(localFolders);
+        }
+
+        if (Array.isArray(apiPhotos) && apiPhotos.length > 0) {
+          setPhotos(apiPhotos);
+          savePhotos(apiPhotos);
+          savePhotosToDB(apiPhotos);
+        } else if (Array.isArray(localPhotos) && localPhotos.length > 0 && Array.isArray(apiPhotos)) {
+          // Tương tự cho ảnh
+          addPhotosApi(localPhotos);
+        }
+      } catch (err) {
+        console.warn('Lỗi khi đồng bộ từ MongoDB:', err);
       }
-    });
+    }
+
+    initializeData();
+
     return () => { isMounted = false; };
   }, []);
 
@@ -98,7 +150,7 @@ export default function App() {
     speechAssistant.setEnabled(speechEnabled);
   }, [fontSize, theme, speechEnabled]);
 
-  // Lưu folders & photos vào LocalStorage & IndexedDB đồng thời
+  // Lưu folders & photos vào LocalStorage & IndexedDB đồng thời làm cache
   useEffect(() => {
     saveFolders(folders);
     saveFoldersToDB(folders);
@@ -148,6 +200,8 @@ export default function App() {
       triggerCelebration();
       showToast(`Đã tạo album mới "${folderData.name}"!`, '✨');
     }
+    // Gửi lên MongoDB
+    saveFolderApi(folderData);
   };
 
   const handleDeleteFolder = (folder) => {
@@ -164,6 +218,8 @@ export default function App() {
         }
         setConfirmState({ isOpen: false, title: '', message: '', onConfirm: null });
         showToast(`Đã xóa album "${folder.name}"`, '🗑️');
+        // Xóa trên MongoDB
+        deleteFolderApi(folder.id);
       }
     });
   };
@@ -173,19 +229,26 @@ export default function App() {
     setPhotos(prev => [...newUploadedPhotos, ...prev]);
     triggerCelebration();
     showToast(`Đã tải lên thành công ${newUploadedPhotos.length} bức ảnh mới!`, '🎉');
+    // Lưu vào MongoDB
+    addPhotosApi(newUploadedPhotos);
   };
 
   const handleToggleFavorite = (photoId) => {
+    let updatedPhoto = null;
     setPhotos(prev => prev.map(p => {
       if (p.id === photoId) {
         const nextState = !p.isFavorite;
+        updatedPhoto = { ...p, isFavorite: nextState };
         if (speechEnabled) {
           speechAssistant.speak(nextState ? 'Đã thêm ảnh vào danh sách yêu thích' : 'Đã bỏ yêu thích');
         }
-        return { ...p, isFavorite: nextState };
+        return updatedPhoto;
       }
       return p;
     }));
+    if (updatedPhoto) {
+      updatePhotoApi(updatedPhoto);
+    }
   };
 
   const handleDeletePhoto = (photo) => {
@@ -200,6 +263,8 @@ export default function App() {
         if (speechEnabled) {
           speechAssistant.speak('Đã xóa bức ảnh');
         }
+        // Xóa trên MongoDB
+        deletePhotoApi(photo.id);
       }
     });
   };
@@ -228,6 +293,9 @@ export default function App() {
         if (speechEnabled) {
           speechAssistant.speak('Đã khôi phục album mẫu');
         }
+        // Đồng bộ lên MongoDB
+        saveAllFoldersApi(sampleF);
+        bulkSavePhotosApi(sampleP);
       }
     });
   };
@@ -244,6 +312,8 @@ export default function App() {
         if (speechEnabled) {
           speechAssistant.speak('Đã dọn sạch ảnh cũ');
         }
+        // Xóa sạch trên MongoDB
+        clearAllPhotosApi();
       }
     });
   };
