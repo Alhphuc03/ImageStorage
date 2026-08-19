@@ -23,15 +23,17 @@ export async function handler(event, context) {
     if (event.httpMethod === 'POST') {
       const payload = JSON.parse(event.body || '{}');
 
-      // Nếu truyền mảng (bulk save)
-      if (Array.isArray(payload)) {
+      // Nếu là hành động xóa toàn bộ hoặc bulk save mảng
+      if (payload.action === 'clear' || Array.isArray(payload)) {
         await collection.deleteMany({});
-        if (payload.length > 0) {
-          const docs = payload.map(f => {
+        if (Array.isArray(payload) && payload.length > 0) {
+          const docs = payload.filter(f => f && (f.name || f.id)).map(f => {
             const { _id, ...rest } = f;
             return rest;
           });
-          await collection.insertMany(docs);
+          if (docs.length > 0) {
+            await collection.insertMany(docs);
+          }
         }
         return {
           statusCode: 200,
@@ -40,7 +42,15 @@ export async function handler(event, context) {
         };
       }
 
-      // Nếu tạo một folder đơn lẻ
+      // Nếu tạo một folder đơn lẻ (yêu cầu phải có tên album thực sự)
+      if (!payload.name && !payload.id) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Dữ liệu rỗng, bỏ qua' }),
+        };
+      }
+
       if (!payload.id) {
         payload.id = `folder_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       }

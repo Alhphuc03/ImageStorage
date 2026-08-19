@@ -27,10 +27,10 @@ export async function handler(event, context) {
     if (event.httpMethod === 'POST') {
       const payload = JSON.parse(event.body || '{}');
 
-      // Nếu là hành động lưu toàn bộ (bulk replace)
-      if (payload.action === 'bulk_save' && Array.isArray(payload.photos)) {
+      // Nếu là hành động xóa toàn bộ hoặc bulk replace
+      if (payload.action === 'clear' || (payload.action === 'bulk_save' && Array.isArray(payload.photos))) {
         await collection.deleteMany({});
-        if (payload.photos.length > 0) {
+        if (payload.photos && payload.photos.length > 0) {
           const docs = payload.photos.map(p => {
             const { _id, ...rest } = p;
             return rest;
@@ -40,7 +40,7 @@ export async function handler(event, context) {
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ success: true, message: 'Đã lưu toàn bộ ảnh thành công' }),
+          body: JSON.stringify({ success: true, message: 'Đã xóa hoặc lưu toàn bộ ảnh thành công' }),
         };
       }
 
@@ -54,7 +54,7 @@ export async function handler(event, context) {
           };
         }
 
-        const cleanDocs = payload.map(item => {
+        const cleanDocs = payload.filter(item => item && (item.url || item.title || item.id)).map(item => {
           const { _id, ...rest } = item;
           if (!rest.id) {
             rest.id = `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
@@ -78,7 +78,15 @@ export async function handler(event, context) {
         };
       }
 
-      // Nếu thêm 1 ảnh đơn lẻ
+      // Nếu thêm 1 ảnh đơn lẻ (yêu cầu phải có dữ liệu thực sự)
+      if (!payload.url && !payload.title && !payload.id) {
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ success: true, message: 'Dữ liệu rỗng, bỏ qua' }),
+        };
+      }
+
       if (!payload.id) {
         payload.id = `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
       }

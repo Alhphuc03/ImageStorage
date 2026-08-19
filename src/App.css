@@ -642,47 +642,79 @@
 .lightbox-modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(11, 19, 41, 0.96);
-  backdrop-filter: blur(10px);
+  background: rgba(0, 0, 0, 0.95);
+  backdrop-filter: blur(12px);
   z-index: 1000;
   display: flex;
   flex-direction: column;
-  padding: 16px;
+  padding: 0;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
 }
 
 .lightbox-topbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 8px 16px;
+  padding: 16px 20px;
   color: #ffffff;
-  gap: 12px;
+  z-index: 20;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.75) 0%, rgba(0, 0, 0, 0) 100%);
+  transition: opacity 0.25s ease, transform 0.25s ease;
+  pointer-events: auto;
 }
 
-.lightbox-counter {
-  font-size: var(--font-lg);
+.lightbox-topbar.hidden {
+  opacity: 0;
+  transform: translateY(-100%);
+  pointer-events: none;
+}
+
+.lightbox-counter-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  backdrop-filter: blur(8px);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 14px;
   font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #ffffff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
 .lightbox-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 10px;
 }
 
 .lightbox-ctrl-btn {
   background: rgba(255, 255, 255, 0.12);
   color: #ffffff;
-  padding: 6px 14px;
-  border-radius: var(--radius-sm);
+  padding: 8px 14px;
+  border-radius: var(--radius-full);
   font-size: var(--font-sm);
-  min-height: 36px;
+  min-height: 40px;
   border: 1px solid rgba(255, 255, 255, 0.2);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .lightbox-ctrl-btn:hover {
   background: rgba(255, 255, 255, 0.25);
+  transform: translateY(-1px);
 }
 
 .lightbox-ctrl-btn.active {
@@ -690,29 +722,53 @@
   border-color: var(--color-secondary);
 }
 
+.lightbox-fav-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
 .lightbox-close-btn {
-  background: var(--color-danger);
+  background: rgba(239, 68, 68, 0.85);
   color: #ffffff;
-  width: 38px;
-  height: 38px;
+  width: 40px;
+  height: 40px;
   border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(8px);
+  flex-shrink: 0;
+}
+
+.lightbox-close-btn:hover {
+  background: #dc2626;
+  transform: scale(1.08);
 }
 
 .lightbox-content-area {
   flex: 1;
+  width: 100vw;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: 8px;
+  padding: 0;
+  margin: 0;
+  touch-action: pan-y pinch-zoom;
 }
 
 .lightbox-nav-btn {
   position: absolute;
   top: 50%;
   transform: translateY(-50%);
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.15);
   color: #ffffff;
   width: 54px;
   height: 54px;
@@ -720,39 +776,85 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10;
-  backdrop-filter: blur(4px);
-  border: 1.5px solid rgba(255, 255, 255, 0.35);
+  z-index: 15;
+  backdrop-filter: blur(6px);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  transition: all 0.2s ease;
 }
 
 .lightbox-nav-btn:hover {
-  background: rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.35);
   transform: translateY(-50%) scale(1.08);
 }
 
 .lightbox-nav-btn.prev {
-  left: 16px;
+  left: 20px;
 }
 
 .lightbox-nav-btn.next {
-  right: 16px;
+  right: 20px;
 }
 
-.lightbox-main-img-wrapper {
-  max-width: 92%;
-  max-height: 84vh;
+.lightbox-slider-track {
+  display: flex;
+  flex-direction: row;
+  width: 100%;
+  height: 100%;
+  will-change: transform;
+  touch-action: pan-y pinch-zoom;
+}
+
+.lightbox-slide {
+  flex: 0 0 100%;
+  width: 100%;
+  width: 100vw;
+  height: 100%;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.25s ease;
+  overflow: hidden;
+  position: relative;
+  box-sizing: border-box;
+  padding: 0;
+}
+
+.lightbox-main-img-wrapper {
+  width: 100%;
+  height: 100%;
+  max-width: 100vw;
+  max-height: 100vh;
+  max-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  will-change: transform;
 }
 
 .lightbox-main-img {
-  max-width: 100%;
-  max-height: 82vh;
+  width: 100%;
+  height: 100%;
+  max-width: 100vw;
+  max-height: 100vh;
+  max-height: 100dvh;
   object-fit: contain;
-  border-radius: var(--radius-md);
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.7);
+  border-radius: 0;
+  box-shadow: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: auto;
+}
+
+.lightbox-img-placeholder {
+  width: 100%;
+  height: 100%;
+}
+
+.lightbox-mobile-swipe-hint {
+  display: none;
 }
 
 /* ==========================================================================
@@ -1351,4 +1453,289 @@
     min-width: 0;
     padding: 0 12px;
   }
+
+  /* Lightbox / Photo Viewer trên Mobile */
+  .desktop-only {
+    display: none !important;
+  }
+
+  .lightbox-modal-backdrop {
+    background: #000000;
+  }
+
+  .lightbox-topbar {
+    padding: calc(env(safe-area-inset-top, 12px) + 8px) 14px 14px 14px;
+  }
+
+  .lightbox-counter-badge {
+    font-size: 13px;
+    padding: 5px 12px;
+    background: rgba(0, 0, 0, 0.45);
+    border-color: rgba(255, 255, 255, 0.15);
+  }
+
+  .lightbox-close-btn,
+  .lightbox-fav-btn {
+    width: 38px;
+    height: 38px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+  .lightbox-close-btn {
+    background: rgba(239, 68, 68, 0.85);
+  }
+
+  .lightbox-fav-btn.active {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+
+  .lightbox-content-area {
+    width: 100vw;
+    height: 100dvh;
+  }
+
+  .lightbox-main-img {
+    max-width: 100vw;
+    max-height: 100dvh;
+    width: 100vw;
+    height: 100dvh;
+    object-fit: contain;
+  }
+
+  .lightbox-mobile-swipe-hint {
+    display: flex;
+    position: absolute;
+    bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    color: rgba(255, 255, 255, 0.85);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    pointer-events: none;
+    animation: fadeOutHint 4s forwards ease-in-out;
+    z-index: 10;
+  }
+
+  @keyframes fadeOutHint {
+    0% { opacity: 0; transform: translate(-50%, 10px); }
+    15% { opacity: 1; transform: translate(-50%, 0); }
+    75% { opacity: 1; }
+    100% { opacity: 0; transform: translate(-50%, -10px); visibility: hidden; }
+  }
 }
+
+/* ==========================================================================
+   LOGIN GATE SCREEN & USER AUTHENTICATION
+   ========================================================================== */
+.login-gate-screen {
+  min-height: 100vh;
+  min-height: 100dvh;
+  width: 100vw;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--color-bg);
+  position: relative;
+  overflow: hidden;
+  padding: 20px;
+}
+
+.login-bg-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+  opacity: 0.25;
+}
+
+.login-bg-glow.glow-1 {
+  width: 380px;
+  height: 380px;
+  background: #ea580c;
+  top: -80px;
+  left: -80px;
+}
+
+.login-bg-glow.glow-2 {
+  width: 420px;
+  height: 420px;
+  background: #2563eb;
+  bottom: -100px;
+  right: -100px;
+}
+
+.login-card-container {
+  width: 100%;
+  max-width: 440px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.12);
+  border-radius: var(--radius-xl, 24px);
+  padding: 32px 28px;
+  position: relative;
+  z-index: 10;
+  backdrop-filter: blur(16px);
+  animation: loginCardAppear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes loginCardAppear {
+  from { opacity: 0; transform: translateY(20px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.login-logo-circle {
+  width: 64px;
+  height: 64px;
+  background: linear-gradient(135deg, #ea580c, #f97316);
+  border-radius: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 16px auto;
+  box-shadow: 0 10px 20px rgba(234, 88, 12, 0.3);
+}
+
+.login-title {
+  font-size: 24px;
+  font-weight: 900;
+  letter-spacing: -0.5px;
+  color: var(--color-text-main);
+  margin-bottom: 6px;
+}
+
+.login-subtitle {
+  font-size: var(--font-sm);
+  color: var(--color-text-sub);
+}
+
+.login-error-box {
+  margin-bottom: 18px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-input-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.login-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 16px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--color-border);
+  background: var(--color-bg);
+  color: var(--color-text-main);
+  font-size: var(--font-base);
+  transition: all 0.2s ease;
+}
+
+.login-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+  outline: none;
+}
+
+.password-toggle-btn {
+  position: absolute;
+  right: 12px;
+  background: transparent;
+  color: var(--color-text-sub);
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+}
+
+.login-submit-btn {
+  width: 100%;
+  height: 48px;
+  margin-top: 6px;
+  font-size: var(--font-base);
+  font-weight: 700;
+}
+
+.quick-login-section {
+  margin-top: 24px;
+  border-top: 1px dashed var(--color-border);
+  padding-top: 18px;
+}
+
+.quick-login-divider {
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.quick-login-divider span {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--color-text-sub);
+  letter-spacing: 0.5px;
+}
+
+.quick-login-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.quick-user-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 10px 6px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+  background: var(--color-bg);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.quick-user-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+
+.quick-user-avatar {
+  font-size: 22px;
+  margin-bottom: 4px;
+}
+
+.quick-user-info strong {
+  display: block;
+  font-size: 12px;
+  color: var(--color-text-main);
+  line-height: 1.2;
+}
+
+.quick-user-info span {
+  display: block;
+  font-size: 10px;
+  color: var(--color-text-sub);
+  margin-top: 2px;
+  line-height: 1.1;
+}
+
+

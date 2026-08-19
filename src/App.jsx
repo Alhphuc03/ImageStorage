@@ -5,12 +5,14 @@ import FolderList from './components/FolderList';
 import PhotoGrid from './components/PhotoGrid';
 import UploadModal from './components/UploadModal';
 import FolderModal from './components/FolderModal';
-import CloudinaryModal from './components/CloudinaryModal';
+import R2Modal from './components/R2Modal';
 import SettingsModal from './components/SettingsModal';
 import PhotoViewer from './components/PhotoViewer';
 import ConfirmModal from './components/ConfirmModal';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileAlbumDrawer from './components/MobileAlbumDrawer';
+import LoginGate from './components/LoginGate';
+import UserManagementModal from './components/UserManagementModal';
 
 import { 
   getStoredFolders, 
@@ -32,19 +34,27 @@ import {
   saveFolderApi,
   deleteFolderApi,
   saveAllFoldersApi,
+  clearAllFoldersApi,
   fetchPhotosApi,
   addPhotosApi,
   updatePhotoApi,
   deletePhotoApi,
   clearAllPhotosApi,
+  deleteR2FileApi,
+  clearAllR2FilesApi,
   bulkSavePhotosApi
 } from './services/api';
-import { getStoredCloudinaryConfig } from './services/cloudinary';
+import { getStoredR2Config } from './services/r2';
 import { speechAssistant } from './services/speech';
+import { authService } from './services/auth';
 
 import './App.css';
 
 export default function App() {
+  // 0. Xác thực & Người dùng hiện tại
+  const [currentUser, setCurrentUser] = useState(() => authService.getCurrentUser());
+  const [isUsersModalOpen, setIsUsersModalOpen] = useState(false);
+
   // 1. Trạng thái Trợ năng & Giao diện
   const [prefs, setPrefs] = useState(() => getStoredPrefs());
   const [fontSize, setFontSize] = useState(prefs?.fontSize || 'large');
@@ -53,39 +63,53 @@ export default function App() {
 
   // 2. Chế độ Xem ảnh (Viewer) vs Chế độ Quản trị (Edit Mode)
   const [isEditMode, setIsEditMode] = useState(() => {
+    const user = authService.getCurrentUser();
+    if (user?.role === 'viewer') return false;
     if (typeof window !== 'undefined' && window.innerWidth <= 768) {
       return false;
     }
     return true;
   });
 
-  // 3. Dữ liệu Thư mục, Ảnh & Cấu hình Cloudinary
+  // Tự động chuyển về Chỉ Xem nếu là tài khoản viewer
+  useEffect(() => {
+    if (currentUser?.role === 'viewer') {
+      setIsEditMode(false);
+    }
+  }, [currentUser]);
+
+  // 3. Dữ liệu Thư mục, Ảnh & Cấu hình Cloudflare R2
   const [folders, setFolders] = useState(() => getStoredFolders() || []);
   const [photos, setPhotos] = useState(() => getStoredPhotos() || []);
   const [activeFolderId, setActiveFolderId] = useState(null);
-  const [cloudinaryConfig, setCloudinaryConfig] = useState(() => getStoredCloudinaryConfig() || {});
+  const [filterMode, setFilterMode] = useState('all'); // 'all' | 'favorites'
+  const [r2Config, setR2Config] = useState(() => getStoredR2Config() || {});
 
-  // Tải dữ liệu từ MongoDB API khi mở ứng dụng (ưu tiên MongoDB, fallback sang IndexedDB/LocalStorage)
+  const handleLogout = () => {
+    authService.logout();
+    setCurrentUser(null);
+    if (speechEnabled) {
+      speechAssistant.speak('Đã đăng xuất');
+    }
+  };
+
+  // Tải dữ liệu từ MongoDB API khi mở ứng dụng (MongoDB là nguồn dữ liệu chuẩn)
   useEffect(() => {
     let isMounted = true;
 
     async function initializeData() {
-      // 1. Tải nhanh từ IndexedDB trước để người dùng thấy dữ liệu tức thì
+      // 1. Tải nhanh từ IndexedDB trước để không bị giật giao diện
       const [localPhotos, localFolders] = await Promise.all([
         loadPhotosFromDB(),
         loadFoldersFromDB()
       ]);
       
       if (isMounted) {
-        if (Array.isArray(localPhotos) && localPhotos.length > 0) {
-          setPhotos(localPhotos);
-        }
-        if (Array.isArray(localFolders) && localFolders.length > 0) {
-          setFolders(localFolders);
-        }
+        if (Array.isArray(localPhotos)) setPhotos(localPhotos);
+        if (Array.isArray(localFolders)) setFolders(localFolders);
       }
 
-      // 2. Đồng bộ dữ liệu trực tuyến từ MongoDB Atlas
+      // 2. Đồng bộ trực tuyến từ MongoDB Atlas (MongoDB là chuẩn tuyệt đối)
       try {
         const [apiFolders, apiPhotos] = await Promise.all([
           fetchFoldersApi(),
@@ -94,23 +118,17 @@ export default function App() {
 
         if (!isMounted) return;
 
-        // Nếu MongoDB có dữ liệu
-        if (Array.isArray(apiFolders) && apiFolders.length > 0) {
+        // Nếu kết nối MongoDB thành công
+        if (Array.isArray(apiFolders)) {
           setFolders(apiFolders);
           saveFolders(apiFolders);
           saveFoldersToDB(apiFolders);
-        } else if (Array.isArray(localFolders) && localFolders.length > 0 && Array.isArray(apiFolders)) {
-          // Nếu MongoDB rỗng mà Local có data, đồng bộ local lên MongoDB
-          saveAllFoldersApi(localFolders);
         }
 
-        if (Array.isArray(apiPhotos) && apiPhotos.length > 0) {
+        if (Array.isArray(apiPhotos)) {
           setPhotos(apiPhotos);
           savePhotos(apiPhotos);
           savePhotosToDB(apiPhotos);
-        } else if (Array.isArray(localPhotos) && localPhotos.length > 0 && Array.isArray(apiPhotos)) {
-          // Tương tự cho ảnh
-          addPhotosApi(localPhotos);
         }
       } catch (err) {
         console.warn('Lỗi khi đồng bộ từ MongoDB:', err);
@@ -126,7 +144,7 @@ export default function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isFolderModalOpen, setIsFolderModalOpen] = useState(false);
   const [folderToEdit, setFolderToEdit] = useState(null);
-  const [isCloudinaryOpen, setIsCloudinaryOpen] = useState(false);
+  const [isR2Open, setIsR2Open] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isAlbumDrawerOpen, setIsAlbumDrawerOpen] = useState(false);
   const [confirmState, setConfirmState] = useState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -246,6 +264,15 @@ export default function App() {
       }
       return p;
     }));
+
+    setViewerState(prev => {
+      if (!prev.isOpen || !prev.photos) return prev;
+      return {
+        ...prev,
+        photos: prev.photos.map(p => p.id === photoId ? { ...p, isFavorite: !p.isFavorite } : p)
+      };
+    });
+
     if (updatedPhoto) {
       updatePhotoApi(updatedPhoto);
     }
@@ -255,7 +282,7 @@ export default function App() {
     setConfirmState({
       isOpen: true,
       title: 'Xóa bức ảnh này',
-      message: `Bạn có chắc chắn muốn xóa bức ảnh này khỏi kho lưu trữ không?`,
+      message: `Bạn có chắc chắn muốn xóa bức ảnh này khỏi kho lưu trữ và Cloudflare R2 không?`,
       onConfirm: () => {
         setPhotos(prev => prev.filter(p => p.id !== photo.id));
         setConfirmState({ isOpen: false, title: '', message: '', onConfirm: null });
@@ -263,8 +290,11 @@ export default function App() {
         if (speechEnabled) {
           speechAssistant.speak('Đã xóa bức ảnh');
         }
-        // Xóa trên MongoDB
+        // Xóa trên MongoDB & Cloudflare R2
         deletePhotoApi(photo.id);
+        if (photo.url) {
+          deleteR2FileApi(photo.url);
+        }
       }
     });
   };
@@ -303,72 +333,117 @@ export default function App() {
   const handleClearAllPhotos = () => {
     setConfirmState({
       isOpen: true,
-      title: 'Dọn Sạch Kho Ảnh',
-      message: 'Bạn có chắc chắn muốn xóa toàn bộ các bức ảnh cũ để bắt đầu lưu trữ ảnh mới của bạn không? (Các album vẫn sẽ được giữ nguyên).',
-      onConfirm: () => {
-        setPhotos([]);
+      title: 'Dọn Sạch Toàn Bộ Dữ Liệu',
+      message: 'Bạn có chắc chắn muốn xóa sạch toàn bộ Album, Ảnh trên máy, trong cơ sở dữ liệu MongoDB và trên Cloudflare R2 không?',
+      onConfirm: async () => {
+        // Đóng hộp thoại ngay lập tức để không bị đơ giao diện
         setConfirmState({ isOpen: false, title: '', message: '', onConfirm: null });
-        showToast('Đã dọn sạch toàn bộ ảnh cũ!', '✨');
+        showToast('Đang dọn sạch toàn bộ Album, Ảnh trên MongoDB & Cloudflare R2...', '⏳');
+
+        setPhotos([]);
+        setFolders([]);
+        setActiveFolderId(null);
+        clearAllData();
+        await savePhotosToDB([]);
+        await saveFoldersToDB([]);
+
+        // Xóa sạch trên MongoDB cả photos, folders và Cloudflare R2 bucket
+        await Promise.all([
+          clearAllPhotosApi(),
+          clearAllFoldersApi(),
+          clearAllR2FilesApi()
+        ]);
+
+        showToast('Đã dọn sạch toàn bộ Album, Ảnh trên MongoDB & Cloudflare R2!', '✨');
         if (speechEnabled) {
-          speechAssistant.speak('Đã dọn sạch ảnh cũ');
+          speechAssistant.speak('Đã dọn sạch toàn bộ album, ảnh và lưu trữ');
         }
-        // Xóa sạch trên MongoDB
-        clearAllPhotosApi();
       }
     });
   };
+
+  // NẾU CHƯA ĐĂNG NHẬP -> HIỂN THỊ MÀN HÌNH ĐĂNG NHẬP (LOGIN GATE)
+  if (!currentUser) {
+    return (
+      <LoginGate
+        onLoginSuccess={(user) => {
+          setCurrentUser(user);
+          if (user?.role === 'viewer') {
+            setIsEditMode(false);
+          }
+          showToast(`Xin chào ${user.fullName || user.username}!`, '👋');
+          if (speechEnabled) {
+            speechAssistant.speak(`Đăng nhập thành công. Chào mừng ${user.fullName || user.username}`);
+          }
+        }}
+      />
+    );
+  }
 
   return (
     <div className="app-container">
       {/* 1. HEADER */}
       <Header
         fontSize={fontSize}
-        setFontSize={setFontSize}
+        onChangeFontSize={setFontSize}
         theme={theme}
-        setTheme={setTheme}
+        onToggleTheme={() => setTheme(prev => prev === 'light' ? 'dark' : 'light')}
         speechEnabled={speechEnabled}
-        setSpeechEnabled={setSpeechEnabled}
-        cloudinaryConfig={cloudinaryConfig}
+        onToggleSpeech={() => setSpeechEnabled(prev => !prev)}
+        r2Config={r2Config}
         isEditMode={isEditMode}
         onToggleEditMode={() => setIsEditMode(prev => !prev)}
         onOpenUpload={() => setIsUploadOpen(true)}
         onOpenNewFolder={handleOpenNewFolder}
-        onOpenCloudinary={() => setIsCloudinaryOpen(true)}
+        onOpenR2={() => setIsR2Open(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onResetData={handleResetData}
         onClearAllPhotos={handleClearAllPhotos}
+        currentUser={currentUser}
+        onLogout={handleLogout}
+        onOpenUsersModal={() => setIsUsersModalOpen(true)}
       />
 
       {/* 2. THÂN ỨNG DỤNG */}
       <main className="main-body">
-        {/* TRƯỜNG HỢP 1: Chế độ Xem thuần túy (isEditMode === false) */}
-        {!isEditMode ? (
+        {/* TRƯỜNG HỢP 1: Chế độ Xem thuần túy (isEditMode === false hoặc là Viewer) */}
+        {!isEditMode || currentUser?.role === 'viewer' ? (
           !activeFolderId ? (
             /* Khi chưa chọn album: Hiển thị danh sách các Album */
             <FolderList
               folders={folders}
               photos={photos}
               activeFolderId={activeFolderId}
-              onSelectFolder={setActiveFolderId}
+              onSelectFolder={(id) => {
+                setActiveFolderId(id);
+                setFilterMode('all');
+              }}
               onOpenNewFolder={handleOpenNewFolder}
               onEditFolder={handleEditFolder}
               onDeleteFolder={handleDeleteFolder}
               isEditMode={false}
               speechEnabled={speechEnabled}
+              currentUser={currentUser}
             />
           ) : (
-            /* Khi đã chọn album: Mở danh sách ảnh trong album đó */
+            /* Khi đã chọn album hoặc bấm Tất Cả / Yêu Thích: Mở danh sách ảnh */
             <PhotoGrid
               photos={photos}
               folders={folders}
               activeFolderId={activeFolderId}
-              onSelectFolder={setActiveFolderId}
+              filterMode={filterMode}
+              onFilterModeChange={setFilterMode}
+              onSelectFolder={(id) => {
+                setActiveFolderId(id);
+                setFilterMode('all');
+              }}
               onOpenPhotoViewer={handleOpenPhotoViewer}
               onToggleFavorite={handleToggleFavorite}
               onDeletePhoto={handleDeletePhoto}
               onOpenUpload={() => setIsUploadOpen(true)}
               isEditMode={false}
               speechEnabled={speechEnabled}
+              currentUser={currentUser}
             />
           )
         ) : (
@@ -378,25 +453,35 @@ export default function App() {
               folders={folders}
               photos={photos}
               activeFolderId={activeFolderId}
-              onSelectFolder={(id) => setActiveFolderId(id === activeFolderId ? null : id)}
+              onSelectFolder={(id) => {
+                setActiveFolderId(id === activeFolderId ? null : id);
+                setFilterMode('all');
+              }}
               onOpenNewFolder={handleOpenNewFolder}
               onEditFolder={handleEditFolder}
               onDeleteFolder={handleDeleteFolder}
               isEditMode={true}
               speechEnabled={speechEnabled}
+              currentUser={currentUser}
             />
 
             <PhotoGrid
               photos={photos}
               folders={folders}
               activeFolderId={activeFolderId}
-              onSelectFolder={setActiveFolderId}
+              filterMode={filterMode}
+              onFilterModeChange={setFilterMode}
+              onSelectFolder={(id) => {
+                setActiveFolderId(id);
+                setFilterMode('all');
+              }}
               onOpenPhotoViewer={handleOpenPhotoViewer}
               onToggleFavorite={handleToggleFavorite}
               onDeletePhoto={handleDeletePhoto}
               onOpenUpload={() => setIsUploadOpen(true)}
               isEditMode={true}
               speechEnabled={speechEnabled}
+              currentUser={currentUser}
             />
           </>
         )}
@@ -404,19 +489,32 @@ export default function App() {
 
       {/* 3. THANH ĐIỀU HƯỚNG DƯỚI ĐÁY CHO MOBILE */}
       <MobileBottomNav
-        activeTab={activeFolderId ? 'folder' : 'all'}
+        activeTab={filterMode === 'favorites' ? 'favorites' : activeFolderId === 'all' ? 'all' : activeFolderId ? 'folder' : 'album'}
         activeFolderId={activeFolderId}
+        filterMode={filterMode}
         folders={folders}
         photos={photos}
         isEditMode={isEditMode}
         onToggleEditMode={() => setIsEditMode(prev => !prev)}
-        onOpenAlbumDrawer={() => setIsAlbumDrawerOpen(true)}
-        onSelectAllPhotos={() => setActiveFolderId('all')}
+        onOpenAlbumDrawer={() => {
+          if ((!isEditMode || currentUser?.role === 'viewer') && activeFolderId) {
+            setActiveFolderId(null);
+            setFilterMode('all');
+          } else {
+            setIsAlbumDrawerOpen(true);
+          }
+        }}
+        onSelectAllPhotos={() => {
+          setActiveFolderId('all');
+          setFilterMode('all');
+        }}
         onSelectFavorites={() => {
           setActiveFolderId('all');
+          setFilterMode('favorites');
         }}
         onOpenUpload={() => setIsUploadOpen(true)}
         speechEnabled={speechEnabled}
+        currentUser={currentUser}
       />
 
       {/* 4. SIDEBAR DRAWER CHỌN ALBUM CHO MOBILE */}
@@ -426,12 +524,16 @@ export default function App() {
         folders={folders}
         photos={photos}
         activeFolderId={activeFolderId}
-        onSelectFolder={setActiveFolderId}
+        onSelectFolder={(id) => {
+          setActiveFolderId(id);
+          setFilterMode('all');
+        }}
         onOpenNewFolder={handleOpenNewFolder}
         onEditFolder={handleEditFolder}
         onDeleteFolder={handleDeleteFolder}
         isEditMode={isEditMode}
         speechEnabled={speechEnabled}
+        currentUser={currentUser}
       />
 
       {/* 5. MODAL CÀI ĐẶT & TRỢ NĂNG */}
@@ -444,12 +546,15 @@ export default function App() {
         setTheme={setTheme}
         speechEnabled={speechEnabled}
         setSpeechEnabled={setSpeechEnabled}
-        cloudinaryConfig={cloudinaryConfig}
-        onOpenCloudinary={() => setIsCloudinaryOpen(true)}
+        r2Config={r2Config}
+        onOpenR2={() => setIsR2Open(true)}
         onResetData={handleResetData}
         onClearAllPhotos={handleClearAllPhotos}
         isEditMode={isEditMode}
         onToggleEditMode={() => setIsEditMode(prev => !prev)}
+        currentUser={currentUser}
+        onOpenUsersModal={() => setIsUsersModalOpen(true)}
+        onLogout={handleLogout}
       />
 
       {/* 6. MODAL TẢI ẢNH LÊN */}
@@ -459,9 +564,10 @@ export default function App() {
         folders={folders}
         activeFolderId={activeFolderId}
         onUploadSuccess={handleUploadSuccess}
-        cloudinaryConfig={cloudinaryConfig}
-        onOpenCloudinary={() => setIsCloudinaryOpen(true)}
+        r2Config={r2Config}
+        onOpenR2={() => setIsR2Open(true)}
         speechEnabled={speechEnabled}
+        currentUser={currentUser}
       />
 
       {/* 7. MODAL TẠO / SỬA THƯ MỤC */}
@@ -471,21 +577,29 @@ export default function App() {
         onClose={() => setIsFolderModalOpen(false)}
         onSaveFolder={handleSaveFolder}
         speechEnabled={speechEnabled}
+        currentUser={currentUser}
       />
 
-      {/* 8. MODAL CÀI ĐẶT CLOUDINARY */}
-      <CloudinaryModal
-        isOpen={isCloudinaryOpen}
-        currentConfig={cloudinaryConfig}
-        onClose={() => setIsCloudinaryOpen(false)}
+      {/* 8. MODAL CÀI ĐẶT CLOUDFLARE R2 (CHỈ ADMIN) */}
+      <R2Modal
+        isOpen={isR2Open}
+        currentConfig={r2Config}
+        onClose={() => setIsR2Open(false)}
         onSaveConfig={(cfg) => {
-          setCloudinaryConfig(cfg);
-          showToast('Đã lưu cấu hình Cloudinary thành công!', '☁️');
+          setR2Config(cfg);
+          showToast('Đã lưu cấu hình Cloudflare R2 thành công!', '⚡');
         }}
         speechEnabled={speechEnabled}
       />
 
-      {/* 9. TRÌNH XEM ẢNH TOÀN MÀN HÌNH (LIGHTBOX & SLIDESHOW) */}
+      {/* 9. MODAL QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN (CHỈ ADMIN) */}
+      <UserManagementModal
+        isOpen={isUsersModalOpen}
+        onClose={() => setIsUsersModalOpen(false)}
+        currentUser={currentUser}
+      />
+
+      {/* 10. TRÌNH XEM ẢNH TOÀN MÀN HÌNH (LIGHTBOX & SLIDESHOW) */}
       {viewerState.isOpen && (
         <PhotoViewer
           photos={viewerState.photos}
@@ -498,7 +612,7 @@ export default function App() {
         />
       )}
 
-      {/* 10. HỘP THOẠI XÁC NHẬN */}
+      {/* 11. HỘP THOẠI XÁC NHẬN */}
       <ConfirmModal
         isOpen={confirmState.isOpen}
         title={confirmState.title}
@@ -507,7 +621,7 @@ export default function App() {
         onConfirm={confirmState.onConfirm}
       />
 
-      {/* 11. THÔNG BÁO NỔI TOAST */}
+      {/* 12. THÔNG BÁO NỔI TOAST */}
       {toast && (
         <div className="toast-notification">
           <span className="toast-icon">{toast.icon}</span>

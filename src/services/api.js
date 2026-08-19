@@ -61,6 +61,21 @@ export const saveAllFoldersApi = async (folders) => {
   }
 };
 
+export const clearAllFoldersApi = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/folders`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify([])
+    });
+    const result = await res.json();
+    return result.success;
+  } catch (error) {
+    console.error('Lỗi khi dọn sạch albums qua API:', error);
+    return false;
+  }
+};
+
 // --- PHOTOS ---
 
 export const fetchPhotosApi = async () => {
@@ -120,13 +135,43 @@ export const deletePhotoApi = async (photoId) => {
 
 export const clearAllPhotosApi = async () => {
   try {
-    const res = await fetch(`${API_BASE}/photos?action=clear`, {
-      method: 'DELETE'
+    const res = await fetch(`${API_BASE}/photos`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'bulk_save', photos: [] })
     });
     const result = await res.json();
     return result.success;
   } catch (error) {
     console.error('Lỗi khi dọn sạch ảnh qua API:', error);
+    return false;
+  }
+};
+
+export const deleteR2FileApi = async (urlOrKey) => {
+  try {
+    const res = await fetch(`${API_BASE}/r2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'delete', url: urlOrKey })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Lỗi xóa R2:', err);
+    return false;
+  }
+};
+
+export const clearAllR2FilesApi = async () => {
+  try {
+    const res = await fetch(`${API_BASE}/r2`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'clear_all' })
+    });
+    return res.ok;
+  } catch (err) {
+    console.warn('Lỗi xóa toàn bộ R2:', err);
     return false;
   }
 };

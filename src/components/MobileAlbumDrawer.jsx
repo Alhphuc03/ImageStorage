@@ -9,6 +9,7 @@ import {
   Folder
 } from 'lucide-react';
 import { speechAssistant } from '../services/speech';
+import { isFolderVisible, isPhotoVisible } from '../services/auth';
 
 export default function MobileAlbumDrawer({
   isOpen,
@@ -21,20 +22,24 @@ export default function MobileAlbumDrawer({
   onEditFolder,
   onDeleteFolder,
   isEditMode,
-  speechEnabled
+  speechEnabled,
+  currentUser
 }) {
   if (!isOpen) return null;
 
   const safeFolders = (folders || []).filter(Boolean);
   const safePhotos = (photos || []).filter(Boolean);
 
+  const visibleFolders = safeFolders.filter(f => isFolderVisible(f, currentUser));
+  const visiblePhotos = safePhotos.filter(p => isPhotoVisible(p, currentUser, safeFolders));
+
   const getPhotoCount = (folderId) => {
-    return safePhotos.filter(p => p && p.folderId === folderId).length;
+    return visiblePhotos.filter(p => p.folderId === folderId).length;
   };
 
   const getFolderCover = (folder) => {
     if (folder?.coverImage) return folder.coverImage;
-    const firstPhoto = safePhotos.find(p => p && p.folderId === folder?.id);
+    const firstPhoto = visiblePhotos.find(p => p.folderId === folder?.id);
     return firstPhoto?.url || null;
   };
 
@@ -55,7 +60,7 @@ export default function MobileAlbumDrawer({
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <Folder size={22} color="#2563eb" />
             <h2 style={{ fontSize: 'var(--font-lg)', fontWeight: 800, color: 'var(--color-text-main)' }}>
-              Danh Mục Album ({safeFolders.length})
+              Album ({visibleFolders.length})
             </h2>
           </div>
           <button className="modal-close-btn" onClick={onClose}>
@@ -64,7 +69,7 @@ export default function MobileAlbumDrawer({
         </div>
 
         {/* Thao tác thêm album nếu đang ở Edit Mode */}
-        {isEditMode && (
+        {isEditMode && currentUser?.role !== 'viewer' && (
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--color-border)' }}>
             <button 
               className="btn-primary" 
@@ -72,7 +77,7 @@ export default function MobileAlbumDrawer({
               onClick={() => { onClose(); onOpenNewFolder(); }}
             >
               <FolderPlus size={16} />
-              <span>Thêm Album Mới</span>
+              <span>Thêm Album</span>
             </button>
           </div>
         )}
@@ -86,17 +91,20 @@ export default function MobileAlbumDrawer({
           >
             <div className="drawer-album-icon">🌟</div>
             <div style={{ flex: 1 }}>
-              <div className="drawer-album-name">Tất Cả Album & Ảnh</div>
-              <div className="drawer-album-meta">{safePhotos.length} bức ảnh</div>
+              <div className="drawer-album-name">Tất Cả Ảnh</div>
+              <div className="drawer-album-meta">{safePhotos.length} ảnh</div>
             </div>
             <ChevronRight size={18} color="var(--color-text-sub)" />
           </div>
 
-          {safeFolders.map((folder) => {
+          {visibleFolders.map((folder) => {
             if (!folder || !folder.id) return null;
             const count = getPhotoCount(folder.id);
             const isActive = activeFolderId === folder.id;
             const coverUrl = getFolderCover(folder);
+            const canManage = isEditMode && currentUser?.role !== 'viewer' && (
+              currentUser?.role === 'admin' || folder.createdBy === currentUser?.username
+            );
 
             return (
               <div 
@@ -116,11 +124,13 @@ export default function MobileAlbumDrawer({
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div className="drawer-album-name">{folder.name || 'Album'}</div>
+                  <div className="drawer-album-name">
+                    {folder.name || 'Album'} {folder.isPublic === false ? '🔒' : ''}
+                  </div>
                   <div className="drawer-album-meta">{count} ảnh</div>
                 </div>
 
-                {isEditMode ? (
+                {canManage ? (
                   <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
                     <button 
                       className="folder-actions-btn"

@@ -1,39 +1,43 @@
 import React from 'react';
 import { 
-  Image as ImageIcon, 
-  Upload, 
   FolderPlus, 
+  Upload, 
+  Trash2, 
+  RotateCcw, 
+  Eye, 
   Volume2, 
   VolumeX, 
   Sun, 
   Moon, 
-  Eye, 
-  Cloud, 
-  RotateCcw, 
-  Edit3, 
-  Settings 
+  Image as ImageIcon,
+  Edit3,
+  Cloud,
+  Settings,
+  Users,
+  LogOut
 } from 'lucide-react';
 import { speechAssistant } from '../services/speech';
 
 export default function Header({
-  fontSize,
-  setFontSize,
-  theme,
-  setTheme,
-  speechEnabled,
-  setSpeechEnabled,
-  cloudinaryConfig,
   isEditMode,
   onToggleEditMode,
-  onOpenUpload,
   onOpenNewFolder,
-  onOpenCloudinary,
-  onOpenSettings,
+  onOpenUpload,
   onResetData,
-  onClearAllPhotos
+  onClearAllPhotos,
+  theme,
+  onToggleTheme,
+  fontSize,
+  onChangeFontSize,
+  speechEnabled,
+  onToggleSpeech,
+  onOpenR2,
+  isR2Connected,
+  onOpenSettings,
+  currentUser,
+  onLogout,
+  onOpenUsersModal
 }) {
-  const isCloudConnected = Boolean(cloudinaryConfig?.cloudName && cloudinaryConfig?.uploadPreset);
-
   const handleSpeak = (text) => {
     if (speechEnabled) {
       speechAssistant.speak(text);
@@ -41,23 +45,20 @@ export default function Header({
   };
 
   const handleFontSizeChange = (size, label) => {
-    setFontSize(size);
-    handleSpeak(`Đã chọn cỡ chữ ${label}`);
+    onChangeFontSize(size);
+    handleSpeak(`Đã đổi cỡ chữ sang ${label}`);
   };
 
-  const handleToggleSpeech = () => {
-    const nextState = !speechEnabled;
-    setSpeechEnabled(nextState);
-    speechAssistant.setEnabled(nextState);
-    if (nextState) {
-      speechAssistant.speak('Đã bật trợ lý giọng nói');
+  const handleThemeChange = (newTheme, label) => {
+    if (theme !== newTheme) {
+      onToggleTheme();
     }
-  };
-
-  const handleThemeChange = (nextTheme, label) => {
-    setTheme(nextTheme);
     handleSpeak(`Đã chuyển sang giao diện ${label}`);
   };
+
+  const isAdmin = currentUser?.role === 'admin';
+  const isEditor = currentUser?.role === 'editor';
+  const isViewer = currentUser?.role === 'viewer';
 
   return (
     <header>
@@ -71,24 +72,24 @@ export default function Header({
           <div className="font-size-btn-group">
             <button 
               className={`font-btn ${fontSize === 'standard' ? 'active' : ''}`}
-              onClick={() => handleFontSizeChange('standard', 'Tiêu chuẩn')}
-              title="Cỡ chữ tiêu chuẩn"
+              onClick={() => handleFontSizeChange('standard', 'Nhỏ')}
+              title="Cỡ chữ nhỏ"
             >
-              A Nhỏ
+              Nhỏ
             </button>
             <button 
               className={`font-btn ${fontSize === 'large' ? 'active' : ''}`}
-              onClick={() => handleFontSizeChange('large', 'Lớn')}
-              title="Cỡ chữ vừa phải"
+              onClick={() => handleFontSizeChange('large', 'Vừa')}
+              title="Cỡ chữ vừa"
             >
-              A+ Vừa
+              Vừa
             </button>
             <button 
               className={`font-btn ${fontSize === 'extra-large' ? 'active' : ''}`}
-              onClick={() => handleFontSizeChange('extra-large', 'Rất lớn')}
-              title="Cỡ chữ rất lớn"
+              onClick={() => handleFontSizeChange('extra-large', 'Lớn')}
+              title="Cỡ chữ lớn"
             >
-              A++ To
+              Lớn
             </button>
           </div>
         </div>
@@ -97,11 +98,11 @@ export default function Header({
         <div className="accessibility-group">
           <button 
             className={`tool-toggle-btn ${speechEnabled ? 'active' : ''}`}
-            onClick={handleToggleSpeech}
-            title="Đọc to nội dung khi bấm"
+            onClick={onToggleSpeech}
+            title="Đọc to nội dung"
           >
             {speechEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
-            <span>Đọc tiếng: {speechEnabled ? 'BẬT' : 'TẮT'}</span>
+            <span>Đọc: {speechEnabled ? 'BẬT' : 'TẮT'}</span>
           </button>
 
           {/* Đổi giao diện Sáng / Tối */}
@@ -122,17 +123,33 @@ export default function Header({
             </button>
           </div>
 
-          {/* Trạng thái Cloudinary */}
-          <button 
-            className={`cloud-status-badge ${isCloudConnected ? 'connected' : 'disconnected'}`}
-            onClick={onOpenCloudinary}
-            title="Cấu hình tài khoản Cloudinary"
-          >
-            <Cloud size={16} />
-            <span>
-              {isCloudConnected ? 'Cloud: Sẵn sàng' : 'Cài đặt Cloud'}
-            </span>
-          </button>
+          {/* Quản lý User (Chỉ Admin) */}
+          {isAdmin && (
+            <button 
+              className="font-btn"
+              onClick={onOpenUsersModal}
+              title="Quản lý tài khoản & phân quyền"
+              style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', borderColor: '#8b5cf6' }}
+            >
+              <Users size={14} />
+              <span>Quản Lý User</span>
+            </button>
+          )}
+
+          {/* Trạng thái Cloudflare R2 (Chỉ Admin) */}
+          {isAdmin && (
+            <button 
+              className={`cloud-status-badge ${isR2Connected ? 'connected' : 'disconnected'}`}
+              onClick={onOpenR2}
+              title="Cấu hình Cloudflare R2"
+              style={{ borderColor: isR2Connected ? '#10b981' : '#f6821f', color: isR2Connected ? '#10b981' : '#ea580c' }}
+            >
+              <Cloud size={16} color={isR2Connected ? '#10b981' : '#f6821f'} />
+              <span>
+                {isR2Connected ? 'R2: Sẵn sàng' : 'Cấu hình R2'}
+              </span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -141,51 +158,89 @@ export default function Header({
         <div className="header-content">
           <div 
             className="logo-area"
-            onClick={() => handleSpeak('Kho ảnh kỷ niệm')}
+            onClick={() => handleSpeak('Kho ảnh')}
           >
             <div className="logo-icon-box">
               <ImageIcon size={24} />
             </div>
             <div className="logo-text">
-              <h1>KHO ẢNH KỶ NIỆM</h1>
-              <p>Lưu trữ & ngắm lại hình ảnh gia đình dễ dàng</p>
+              <h1>KHO ẢNH</h1>
+              <p>Lưu giữ khoảnh khắc</p>
             </div>
           </div>
 
           <div className="header-actions">
-            {/* Nút Cài đặt (Mở Settings Modal) */}
+            {/* Huy hiệu người dùng */}
+            {currentUser && (
+              <div 
+                className="user-badge-header"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  padding: '4px 10px',
+                  borderRadius: 999,
+                  background: 'var(--color-surface)',
+                  border: '1px solid var(--color-border)',
+                  fontSize: 'var(--font-sm)',
+                  fontWeight: 600
+                }}
+              >
+                <span>{currentUser.avatar || '👤'}</span>
+                <span className="desktop-only" style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {currentUser.fullName || currentUser.username}
+                </span>
+                <span 
+                  style={{
+                    fontSize: 10,
+                    padding: '1px 6px',
+                    borderRadius: 999,
+                    background: isAdmin ? 'rgba(139, 92, 246, 0.15)' : isEditor ? 'rgba(16, 185, 129, 0.15)' : 'rgba(107, 114, 128, 0.15)',
+                    color: isAdmin ? '#8b5cf6' : isEditor ? '#10b981' : '#6b7280',
+                    fontWeight: 700
+                  }}
+                >
+                  {isAdmin ? 'Admin' : isEditor ? 'Sửa' : 'Xem'}
+                </span>
+              </div>
+            )}
+
+            {/* Nút Cài đặt */}
             <button
               className="btn-secondary"
               onClick={onOpenSettings}
-              title="Cài đặt giao diện, cỡ chữ và trợ năng"
+              title="Cài đặt"
               style={{ padding: '0 14px', height: 38 }}
             >
               <Settings size={16} />
               <span>Cài Đặt</span>
             </button>
 
-            {/* Nút chuyển đổi Chế độ Xem / Quản Trị trên Desktop */}
-            <button 
-              className={`btn-secondary mode-toggle-btn ${isEditMode ? 'active-mode' : ''}`}
-              onClick={onToggleEditMode}
-              title="Bật/Tắt chế độ thêm sửa xóa"
-              style={{
-                borderColor: isEditMode ? 'var(--color-primary)' : 'var(--color-border)',
-                background: isEditMode ? 'var(--color-primary-light)' : 'var(--color-surface)',
-                color: isEditMode ? 'var(--color-primary)' : 'var(--color-text-main)'
-              }}
-            >
-              {isEditMode ? <Edit3 size={16} /> : <Eye size={16} />}
-              <span>{isEditMode ? 'Đang Quản Trị' : 'Chế Độ Chỉ Xem'}</span>
-            </button>
+            {/* Nút chuyển đổi Chế độ Xem / Quản Trị trên Desktop (Ẩn với Viewer) */}
+            {!isViewer && (
+              <button 
+                className={`btn-secondary mode-toggle-btn ${isEditMode ? 'active-mode' : ''}`}
+                onClick={onToggleEditMode}
+                title="Đổi chế độ"
+                style={{
+                  borderColor: isEditMode ? 'var(--color-primary)' : 'var(--color-border)',
+                  background: isEditMode ? 'var(--color-primary-light)' : 'var(--color-surface)',
+                  color: isEditMode ? 'var(--color-primary)' : 'var(--color-text-main)'
+                }}
+              >
+                {isEditMode ? <Edit3 size={16} /> : <Eye size={16} />}
+                <span>{isEditMode ? 'Đang Sửa' : 'Chỉ Xem'}</span>
+              </button>
+            )}
 
-            {/* Các nút quản trị trên desktop */}
-            {isEditMode && (
+            {/* Các nút quản trị trên desktop (Dành cho Admin hoặc Editor khi isEditMode) */}
+            {isEditMode && !isViewer && (
               <>
                 <button 
                   className="btn-large-cta"
                   onClick={onOpenUpload}
-                  title="Tải ảnh mới lên"
+                  title="Tải ảnh"
+                  style={{ background: '#ea580c' }}
                 >
                   <Upload size={18} />
                   <span>Tải Ảnh</span>
@@ -194,16 +249,21 @@ export default function Header({
                 <button 
                   className="btn-primary"
                   onClick={onOpenNewFolder}
-                  title="Thêm thư mục mới"
+                  title="Tạo album"
                 >
                   <FolderPlus size={16} />
                   <span>Thêm Album</span>
                 </button>
+              </>
+            )}
 
+            {/* Các nút chỉ dành riêng cho Admin */}
+            {isEditMode && isAdmin && (
+              <>
                 <button 
                   className="btn-secondary"
                   onClick={onResetData}
-                  title="Khôi phục ảnh mẫu"
+                  title="Nạp ảnh mẫu"
                 >
                   <RotateCcw size={16} />
                   <span>Ảnh Mẫu</span>
@@ -213,11 +273,25 @@ export default function Header({
                   className="btn-secondary"
                   style={{ color: 'var(--color-danger)', borderColor: 'var(--color-danger)' }}
                   onClick={onClearAllPhotos}
-                  title="Xóa toàn bộ ảnh cũ"
+                  title="Xóa toàn bộ"
                 >
-                  <span>Xóa Hết Ảnh</span>
+                  <Trash2 size={16} />
+                  <span>Xóa Hết</span>
                 </button>
               </>
+            )}
+
+            {/* Nút Đăng Xuất */}
+            {currentUser && (
+              <button
+                className="btn-secondary"
+                onClick={onLogout}
+                title="Đăng xuất khỏi thiết bị"
+                style={{ padding: '0 10px', height: 38, color: 'var(--color-text-sub)' }}
+              >
+                <LogOut size={16} />
+                <span className="desktop-only">Đăng Xuất</span>
+              </button>
             )}
           </div>
 

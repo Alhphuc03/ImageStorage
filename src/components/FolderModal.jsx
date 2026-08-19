@@ -18,19 +18,23 @@ export default function FolderModal({
   folderToEdit = null,
   onClose,
   onSaveFolder,
-  speechEnabled
+  speechEnabled,
+  currentUser
 }) {
   const [name, setName] = useState('');
   const [icon, setIcon] = useState('📁');
+  const [isPublic, setIsPublic] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     if (folderToEdit) {
       setName(folderToEdit.name || '');
       setIcon(folderToEdit.icon || '📁');
+      setIsPublic(folderToEdit.isPublic !== false);
     } else {
       setName('');
       setIcon('👨‍👩‍👧‍👦');
+      setIsPublic(true);
     }
     setError('');
   }, [folderToEdit, isOpen]);
@@ -54,6 +58,9 @@ export default function FolderModal({
       id: folderToEdit ? folderToEdit.id : `folder_${Date.now()}`,
       name: name.trim(),
       icon,
+      isPublic,
+      createdBy: folderToEdit ? folderToEdit.createdBy : (currentUser?.username || 'admin'),
+      createdByName: folderToEdit ? folderToEdit.createdByName : (currentUser?.fullName || currentUser?.username || 'Admin'),
       createdAt: folderToEdit ? folderToEdit.createdAt : new Date().toISOString()
     };
 
@@ -69,8 +76,8 @@ export default function FolderModal({
       <div className="modal-dialog" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 520 }}>
         <div className="modal-header">
           <h2 className="modal-title">
-            {folderToEdit ? <Edit3 size={24} color="#2563eb" /> : <FolderPlus size={24} color="#2563eb" />}
-            <span>{folderToEdit ? 'Đổi Tên Album' : 'Tạo Album Mới'}</span>
+            {folderToEdit ? <Edit3 size={22} color="#2563eb" /> : <FolderPlus size={22} color="#2563eb" />}
+            <span>{folderToEdit ? 'Sửa Album' : 'Tạo Album'}</span>
           </h2>
           <button className="modal-close-btn" onClick={onClose} title="Đóng">
             <X size={20} />
@@ -88,7 +95,7 @@ export default function FolderModal({
             {/* Ô nhập tên */}
             <div className="form-group">
               <label className="form-label">
-                Tên album kỷ niệm:
+                Tên album:
               </label>
               <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                 <div 
@@ -108,7 +115,7 @@ export default function FolderModal({
                 </div>
                 <input
                   type="text"
-                  placeholder="Ví dụ: Đi chơi Đà Lạt, Đám cưới Út..."
+                  placeholder="Nhập tên album..."
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   style={{ flex: 1 }}
@@ -117,10 +124,66 @@ export default function FolderModal({
               </div>
             </div>
 
+            {/* Chế độ hiển thị: Công khai vs Riêng tư */}
+            <div className="form-group" style={{ marginTop: 12 }}>
+              <label className="form-label" style={{ marginBottom: 6 }}>
+                Quyền xem album:
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(true)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: isPublic ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                    background: isPublic ? 'var(--color-primary-light)' : 'var(--color-surface)',
+                    color: isPublic ? 'var(--color-primary)' : 'var(--color-text-main)',
+                    fontWeight: 700,
+                    fontSize: 'var(--font-sm)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>🌐</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div>Công Khai</div>
+                    <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-sub)' }}>Mọi người đều xem</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsPublic(false)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    padding: '8px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    border: !isPublic ? '2px solid #8b5cf6' : '1px solid var(--color-border)',
+                    background: !isPublic ? 'rgba(139, 92, 246, 0.12)' : 'var(--color-surface)',
+                    color: !isPublic ? '#8b5cf6' : 'var(--color-text-main)',
+                    fontWeight: 700,
+                    fontSize: 'var(--font-sm)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>🔒</span>
+                  <div style={{ textAlign: 'left' }}>
+                    <div>Riêng Tư</div>
+                    <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--color-text-sub)' }}>Chỉ mình bạn xem</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+
             {/* Gợi ý chọn nhanh 1 chạm */}
             <div>
               <label className="form-label" style={{ marginBottom: 8 }}>
-                💡 Hoặc bấm chọn nhanh tên có sẵn:
+                Gợi ý tên:
               </label>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 8 }}>
                 {QUICK_SUGGESTIONS.map((sug) => {
@@ -160,7 +223,7 @@ export default function FolderModal({
             </button>
             <button type="submit" className="btn-primary">
               <Check size={18} />
-              <span>{folderToEdit ? 'Lưu Tên Mới' : 'Tạo Album Ngay'}</span>
+              <span>{folderToEdit ? 'Lưu' : 'Tạo Album'}</span>
             </button>
           </div>
         </form>
