@@ -1,18 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import confetti from 'canvas-confetti';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
 import Header from './components/Header';
 import FolderList from './components/FolderList';
 import PhotoGrid from './components/PhotoGrid';
-import UploadModal from './components/UploadModal';
-import FolderModal from './components/FolderModal';
-import R2Modal from './components/R2Modal';
-import SettingsModal from './components/SettingsModal';
-import PhotoViewer from './components/PhotoViewer';
-import ConfirmModal from './components/ConfirmModal';
 import MobileBottomNav from './components/MobileBottomNav';
 import MobileAlbumDrawer from './components/MobileAlbumDrawer';
 import LoginGate from './components/LoginGate';
-import UserManagementModal from './components/UserManagementModal';
+
+// Lazy load các Modals chỉ khi người dùng thực sự mở lên
+const UploadModal = lazy(() => import('./components/UploadModal'));
+const FolderModal = lazy(() => import('./components/FolderModal'));
+const R2Modal = lazy(() => import('./components/R2Modal'));
+const SettingsModal = lazy(() => import('./components/SettingsModal'));
+const PhotoViewer = lazy(() => import('./components/PhotoViewer'));
+const ConfirmModal = lazy(() => import('./components/ConfirmModal'));
+const UserManagementModal = lazy(() => import('./components/UserManagementModal'));
 
 import { 
   getStoredFolders, 
@@ -186,8 +187,10 @@ export default function App() {
     }, 4000);
   };
 
-  const triggerCelebration = () => {
+  const triggerCelebration = async () => {
     try {
+      const confettiMod = await import('canvas-confetti');
+      const confetti = confettiMod.default || confettiMod;
       confetti({
         particleCount: 60,
         spread: 70,
@@ -536,92 +539,107 @@ export default function App() {
         currentUser={currentUser}
       />
 
-      {/* 5. MODAL CÀI ĐẶT & TRỢ NĂNG */}
-      <SettingsModal
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-        fontSize={fontSize}
-        setFontSize={setFontSize}
-        theme={theme}
-        setTheme={setTheme}
-        speechEnabled={speechEnabled}
-        setSpeechEnabled={setSpeechEnabled}
-        r2Config={r2Config}
-        onOpenR2={() => setIsR2Open(true)}
-        onResetData={handleResetData}
-        onClearAllPhotos={handleClearAllPhotos}
-        isEditMode={isEditMode}
-        onToggleEditMode={() => setIsEditMode(prev => !prev)}
-        currentUser={currentUser}
-        onOpenUsersModal={() => setIsUsersModalOpen(true)}
-        onLogout={handleLogout}
-      />
+      {/* 5. SUSPENSE WRAPPER CHO CÁC MODALS LAZY LOADED */}
+      <Suspense fallback={null}>
+        {/* MODAL CÀI ĐẶT & TRỢ NĂNG */}
+        {isSettingsOpen && (
+          <SettingsModal
+            isOpen={isSettingsOpen}
+            onClose={() => setIsSettingsOpen(false)}
+            fontSize={fontSize}
+            setFontSize={setFontSize}
+            theme={theme}
+            setTheme={setTheme}
+            speechEnabled={speechEnabled}
+            setSpeechEnabled={setSpeechEnabled}
+            r2Config={r2Config}
+            onOpenR2={() => setIsR2Open(true)}
+            onResetData={handleResetData}
+            onClearAllPhotos={handleClearAllPhotos}
+            isEditMode={isEditMode}
+            onToggleEditMode={() => setIsEditMode(prev => !prev)}
+            currentUser={currentUser}
+            onOpenUsersModal={() => setIsUsersModalOpen(true)}
+            onLogout={handleLogout}
+          />
+        )}
 
-      {/* 6. MODAL TẢI ẢNH LÊN */}
-      <UploadModal
-        isOpen={isUploadOpen}
-        onClose={() => setIsUploadOpen(false)}
-        folders={folders}
-        activeFolderId={activeFolderId}
-        onUploadSuccess={handleUploadSuccess}
-        r2Config={r2Config}
-        onOpenR2={() => setIsR2Open(true)}
-        speechEnabled={speechEnabled}
-        currentUser={currentUser}
-      />
+        {/* MODAL TẢI ẢNH LÊN */}
+        {isUploadOpen && (
+          <UploadModal
+            isOpen={isUploadOpen}
+            onClose={() => setIsUploadOpen(false)}
+            folders={folders}
+            activeFolderId={activeFolderId}
+            onUploadSuccess={handleUploadSuccess}
+            r2Config={r2Config}
+            onOpenR2={() => setIsR2Open(true)}
+            speechEnabled={speechEnabled}
+            currentUser={currentUser}
+          />
+        )}
 
-      {/* 7. MODAL TẠO / SỬA THƯ MỤC */}
-      <FolderModal
-        isOpen={isFolderModalOpen}
-        folderToEdit={folderToEdit}
-        onClose={() => setIsFolderModalOpen(false)}
-        onSaveFolder={handleSaveFolder}
-        speechEnabled={speechEnabled}
-        currentUser={currentUser}
-      />
+        {/* MODAL TẠO / SỬA THƯ MỤC */}
+        {isFolderModalOpen && (
+          <FolderModal
+            isOpen={isFolderModalOpen}
+            folderToEdit={folderToEdit}
+            onClose={() => setIsFolderModalOpen(false)}
+            onSaveFolder={handleSaveFolder}
+            speechEnabled={speechEnabled}
+            currentUser={currentUser}
+          />
+        )}
 
-      {/* 8. MODAL CÀI ĐẶT CLOUDFLARE R2 (CHỈ ADMIN) */}
-      <R2Modal
-        isOpen={isR2Open}
-        currentConfig={r2Config}
-        onClose={() => setIsR2Open(false)}
-        onSaveConfig={(cfg) => {
-          setR2Config(cfg);
-          showToast('Đã lưu cấu hình Cloudflare R2 thành công!', '⚡');
-        }}
-        speechEnabled={speechEnabled}
-      />
+        {/* MODAL CÀI ĐẶT CLOUDFLARE R2 (CHỈ ADMIN) */}
+        {isR2Open && (
+          <R2Modal
+            isOpen={isR2Open}
+            currentConfig={r2Config}
+            onClose={() => setIsR2Open(false)}
+            onSaveConfig={(cfg) => {
+              setR2Config(cfg);
+              showToast('Đã lưu cấu hình Cloudflare R2 thành công!', '⚡');
+            }}
+            speechEnabled={speechEnabled}
+          />
+        )}
 
-      {/* 9. MODAL QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN (CHỈ ADMIN) */}
-      <UserManagementModal
-        isOpen={isUsersModalOpen}
-        onClose={() => setIsUsersModalOpen(false)}
-        currentUser={currentUser}
-      />
+        {/* MODAL QUẢN LÝ NGƯỜI DÙNG & PHÂN QUYỀN (CHỈ ADMIN) */}
+        {isUsersModalOpen && (
+          <UserManagementModal
+            isOpen={isUsersModalOpen}
+            onClose={() => setIsUsersModalOpen(false)}
+            currentUser={currentUser}
+          />
+        )}
 
-      {/* 10. TRÌNH XEM ẢNH TOÀN MÀN HÌNH (LIGHTBOX & SLIDESHOW) */}
-      {viewerState.isOpen && (
-        <PhotoViewer
-          photos={viewerState.photos}
-          initialIndex={viewerState.index}
-          initialAutoPlay={viewerState.autoPlay}
-          folders={folders}
-          onClose={() => setViewerState(prev => ({ ...prev, isOpen: false }))}
-          onToggleFavorite={handleToggleFavorite}
-          speechEnabled={speechEnabled}
-        />
-      )}
+        {/* TRÌNH XEM ẢNH TOÀN MÀN HÌNH (LIGHTBOX & SLIDESHOW) */}
+        {viewerState.isOpen && (
+          <PhotoViewer
+            photos={viewerState.photos}
+            initialIndex={viewerState.index}
+            initialAutoPlay={viewerState.autoPlay}
+            folders={folders}
+            onClose={() => setViewerState(prev => ({ ...prev, isOpen: false }))}
+            onToggleFavorite={handleToggleFavorite}
+            speechEnabled={speechEnabled}
+          />
+        )}
 
-      {/* 11. HỘP THOẠI XÁC NHẬN */}
-      <ConfirmModal
-        isOpen={confirmState.isOpen}
-        title={confirmState.title}
-        message={confirmState.message}
-        onClose={() => setConfirmState({ isOpen: false, title: '', message: '', onConfirm: null })}
-        onConfirm={confirmState.onConfirm}
-      />
+        {/* HỘP THOẠI XÁC NHẬN */}
+        {confirmState.isOpen && (
+          <ConfirmModal
+            isOpen={confirmState.isOpen}
+            title={confirmState.title}
+            message={confirmState.message}
+            onClose={() => setConfirmState({ isOpen: false, title: '', message: '', onConfirm: null })}
+            onConfirm={confirmState.onConfirm}
+          />
+        )}
+      </Suspense>
 
-      {/* 12. THÔNG BÁO NỔI TOAST */}
+      {/* 6. THÔNG BÁO NỔI TOAST */}
       {toast && (
         <div className="toast-notification">
           <span className="toast-icon">{toast.icon}</span>

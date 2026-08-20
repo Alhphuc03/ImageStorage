@@ -311,14 +311,15 @@ export default function PhotoGrid({
                 onClick={() => handlePhotoClick(idx)}
                 style={{ cursor: 'pointer' }}
               >
-                {/* Khung ảnh thumbnail với lazy load */}
+                {/* Khung ảnh thumbnail với lazy load và ưu tiên ảnh đầu */}
                 <div className="photo-thumb-container">
                   <img 
                     src={photo.url} 
                     alt={photo.title || 'Ảnh'} 
                     className="photo-thumb"
-                    loading="lazy"
+                    loading={idx < 2 ? "eager" : "lazy"}
                     decoding="async"
+                    fetchPriority={idx < 2 ? "high" : "auto"}
                   />
 
                   {/* Huy hiệu riêng tư 🔒 */}

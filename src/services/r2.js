@@ -2,7 +2,6 @@
  * Dịch vụ nén ảnh thông minh và lưu trữ siêu tốc lên Cloudflare R2 Object Storage
  * Hỗ trợ tải trực tiếp qua Pre-signed URL (tốc độ cao) và fallback Netlify Direct
  */
-import heic2any from 'heic2any';
 
 export const R2_STORAGE_KEY = 'storage_cloudflare_r2_config_v1';
 export const COMPRESSION_SETTING_KEY = 'storage_image_compression_quality_v1';
@@ -105,13 +104,13 @@ export const saveR2Config = (config) => {
 };
 
 /**
- * Xử lý file ảnh trước khi nén (chuyển đổi HEIC của iPhone sang JPEG trước)
+ * Xử lý file ảnh trước khi nén (chuyển đổi HEIC của iPhone sang JPEG, chỉ nạp thư viện khi gặp ảnh HEIC)
  */
 const prepareImageFile = async (file) => {
   const fileName = (file.name || '').toLowerCase();
   const fileType = (file.type || '').toLowerCase();
 
-  // 1. Nếu là ảnh HEIC/HEIF từ iPhone / iPad
+  // 1. Nếu là ảnh HEIC/HEIF từ iPhone / iPad -> Dynamic import heic2any để tiết kiệm 800KB bundle
   if (
     fileType === 'image/heic' || 
     fileType === 'image/heif' || 
@@ -119,6 +118,8 @@ const prepareImageFile = async (file) => {
     fileName.endsWith('.heif')
   ) {
     try {
+      const heic2anyMod = await import('heic2any');
+      const heic2any = heic2anyMod.default || heic2anyMod;
       const convertedBlob = await heic2any({
         blob: file,
         toType: 'image/jpeg',
