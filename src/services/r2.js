@@ -259,51 +259,107 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
  * @param {Function} onProgress - Callback tiến độ (0 - 100)
  */
 export const uploadToR2 = async (file, customConfig = null, onProgress = null) => {
-  // 1. Tiến hành nén ảnh thông minh trước (WebP ~150KB)
-  if (onProgress) onProgress(20);
+  // 1. Tiến hành nén ảnh thông minh trước (WebP ~150KB - 250KB)
+  if (onProgress) onProgress(15);
   const compressed = await compressImageSmart(file);
-  if (onProgress) onProgress(45);
+  if (onProgress) onProgress(35);
 
   const localConfig = customConfig || getStoredR2Config();
-
-  // 2. Gửi dữ liệu nén trực tiếp lên R2 thông qua Serverless Function (Khắc phục hoàn toàn lỗi CORS trình duyệt)
   const apiEndpoint = '/.netlify/functions/r2';
-  const uploadPayload = {
-    action: 'upload_direct',
-    filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
-    contentType: compressed.contentType,
-    folder: localConfig.folder || 'photos',
-    base64: compressed.dataUrl,
-    config: {
-      accountId: localConfig.accountId || '',
-      accessKeyId: localConfig.accessKeyId || '',
-      secretAccessKey: localConfig.secretAccessKey || '',
-      bucketName: localConfig.bucketName || '',
-      publicDomain: localConfig.publicDomain || '',
-      folder: localConfig.folder || 'photos'
+
+  // 2. Nếu dung lượng sau nén nhỏ (< 3.5MB), gửi trực tiếp qua Netlify Serverless Function (ổn định, không lỗi CORS)
+  if (compressed.compressedSize < 3.5 * 1024 * 1024) {
+    try {
+      const uploadPayload = {
+        action: 'upload_direct',
+        filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
+        contentType: compressed.contentType,
+        folder: localConfig.folder || 'photos',
+        base64: compressed.dataUrl,
+        config: {
+          accountId: localConfig.accountId || '',
+          accessKeyId: localConfig.accessKeyId || '',
+          secretAccessKey: localConfig.secretAccessKey || '',
+          bucketName: localConfig.bucketName || '',
+          publicDomain: localConfig.publicDomain || '',
+          folder: localConfig.folder || 'photos'
+        }
+      };
+
+      if (onProgress) onProgress(65);
+
+      const res = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(uploadPayload)
+      });
+
+      const resData = await res.json();
+
+      if (res.ok && resData.success && resData.publicUrl) {
+        if (onProgress) onProgress(100);
+        return {
+          url: resData.publicUrl,
+          key: resData.key,
+          public_id: resData.key,
+          originalSize: compressed.originalSize,
+          compressedSize: compressed.compressedSize,
+          width: compressed.width,
+          height: compressed.height,
+          isLocal: false
+        };
+      }
+    } catch (e) {
+      console.warn('Upload direct qua Netlify gặp sự cố, tự động chuyển sang Presigned URL:', e);
     }
-  };
+  }
 
-  if (onProgress) onProgress(65);
-
-  const res = await fetch(apiEndpoint, {
+  // 3. Fallback hoặc cho file dung lượng lớn: Tạo Pre-signed URL để tải thẳng trực tiếp vào R2 Bucket
+  const presignRes = await fetch(apiEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(uploadPayload)
+    body: JSON.stringify({
+      action: 'presign',
+      filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
+      contentType: compressed.contentType,
+      folder: localConfig.folder || 'photos',
+      config: {
+        accountId: localConfig.accountId || '',
+        accessKeyId: localConfig.accessKeyId || '',
+        secretAccessKey: localConfig.secretAccessKey || '',
+        bucketName: localConfig.bucketName || '',
+        publicDomain: localConfig.publicDomain || '',
+        folder: localConfig.folder || 'photos'
+      }
+    })
   });
 
-  const resData = await res.json();
+  const presignData = await presignRes.json();
+  if (!presignRes.ok || !presignData.success || !presignData.uploadUrl) {
+    throw new Error(presignData.message || 'Không thể tạo liên kết tải ảnh Cloudflare R2');
+  }
 
-  if (!res.ok || !resData.success || !resData.publicUrl) {
-    throw new Error(resData.message || 'Tải ảnh lên Cloudflare R2 thất bại');
+  if (onProgress) onProgress(70);
+
+  // Upload trực tiếp lên Cloudflare R2 (Bỏ qua mọi giới hạn payload của máy chủ trung gian)
+  const putRes = await fetch(presignData.uploadUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': compressed.contentType
+    },
+    body: compressed.blob
+  });
+
+  if (!putRes.ok) {
+    throw new Error(`Tải trực tiếp lên R2 thất bại (HTTP ${putRes.status})`);
   }
 
   if (onProgress) onProgress(100);
 
   return {
-    url: resData.publicUrl,
-    key: resData.key,
-    public_id: resData.key,
+    url: presignData.publicUrl,
+    key: presignData.key,
+    public_id: presignData.key,
     originalSize: compressed.originalSize,
     compressedSize: compressed.compressedSize,
     width: compressed.width,
