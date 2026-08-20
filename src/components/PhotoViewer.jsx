@@ -308,14 +308,15 @@ export default function PhotoViewer({
             <Download size={20} /> <span className="btn-text">Tải Về</span>
           </button>
 
-          {/* Yêu thích (Hiện cả Mobile & Desktop) */}
+          {/* Yêu thích (Hiện cả Mobile & Desktop với icon to rõ) */}
           <button
             className={`lightbox-ctrl-btn lightbox-fav-btn ${currentPhoto?.isFavorite ? 'active' : ''}`}
             onClick={handleFavoriteToggle}
             title={currentPhoto?.isFavorite ? 'Bỏ yêu thích' : 'Yêu thích'}
           >
             <Heart 
-              size={20} 
+              size={24} 
+              strokeWidth={2.4}
               fill={currentPhoto?.isFavorite ? '#ef4444' : 'none'} 
               color={currentPhoto?.isFavorite ? '#ef4444' : '#ffffff'} 
             />

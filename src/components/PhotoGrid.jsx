@@ -354,7 +354,12 @@ export default function PhotoGrid({
                       onClick={() => onToggleFavorite && onToggleFavorite(photo.id)}
                       title={photo.isFavorite ? 'Bỏ yêu thích' : 'Thêm vào yêu thích'}
                     >
-                      <Heart size={16} fill={photo.isFavorite ? '#ef4444' : 'none'} />
+                      <Heart 
+                        size={18} 
+                        strokeWidth={2.2}
+                        fill={photo.isFavorite ? '#ef4444' : 'none'} 
+                        color={photo.isFavorite ? '#ef4444' : '#64748b'}
+                      />
                     </button>
                   </div>
                 </div>
