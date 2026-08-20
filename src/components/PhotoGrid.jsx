@@ -78,6 +78,8 @@ export default function PhotoGrid({
     return true;
   });
 
+  const [loadedMap, setLoadedMap] = useState({});
+
   // Reset về trang 1 khi chuyển Album, đổi bộ lọc hoặc tìm kiếm
   useEffect(() => {
     setCurrentPage(1);
@@ -90,6 +92,45 @@ export default function PhotoGrid({
   const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
   const endIndex = Math.min(startIndex + PAGE_SIZE, filteredPhotos.length);
   const currentPhotos = filteredPhotos.slice(startIndex, endIndex);
+
+  // Tải trước ngầm ảnh của trang kế tiếp và trang trước để khi bấm nút là ảnh hiện tức thì 0ms
+  useEffect(() => {
+    if (!filteredPhotos || filteredPhotos.length === 0) return;
+
+    const prefetchImages = () => {
+      // 1. Tải trước 10 ảnh của trang sau
+      if (safeCurrentPage < totalPages) {
+        const nextStart = safeCurrentPage * PAGE_SIZE;
+        const nextPhotos = filteredPhotos.slice(nextStart, nextStart + PAGE_SIZE);
+        nextPhotos.forEach(p => {
+          if (p?.url) {
+            const img = new Image();
+            img.src = p.url;
+          }
+        });
+      }
+
+      // 2. Tải trước 10 ảnh của trang trước
+      if (safeCurrentPage > 1) {
+        const prevStart = (safeCurrentPage - 2) * PAGE_SIZE;
+        const prevPhotos = filteredPhotos.slice(prevStart, prevStart + PAGE_SIZE);
+        prevPhotos.forEach(p => {
+          if (p?.url) {
+            const img = new Image();
+            img.src = p.url;
+          }
+        });
+      }
+    };
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      const handle = window.requestIdleCallback(prefetchImages, { timeout: 1500 });
+      return () => window.cancelIdleCallback(handle);
+    } else {
+      const timer = setTimeout(prefetchImages, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [safeCurrentPage, totalPages, filteredPhotos]);
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= totalPages && newPage !== safeCurrentPage) {
@@ -311,15 +352,16 @@ export default function PhotoGrid({
                 onClick={() => handlePhotoClick(idx)}
                 style={{ cursor: 'pointer' }}
               >
-                {/* Khung ảnh thumbnail với lazy load và ưu tiên ảnh đầu */}
-                <div className="photo-thumb-container">
+                {/* Khung ảnh thumbnail với shimmer loading và ưu tiên ảnh đầu */}
+                <div className={`photo-thumb-container ${!loadedMap[photo.id] ? 'is-loading-shimmer' : ''}`}>
                   <img 
                     src={photo.url} 
                     alt={photo.title || 'Ảnh'} 
-                    className="photo-thumb"
+                    className={`photo-thumb ${loadedMap[photo.id] ? 'loaded' : 'loading'}`}
                     loading={idx < 2 ? "eager" : "lazy"}
                     decoding="async"
                     fetchPriority={idx < 2 ? "high" : "auto"}
+                    onLoad={() => setLoadedMap(prev => ({ ...prev, [photo.id]: true }))}
                   />
 
                   {/* Huy hiệu riêng tư 🔒 */}

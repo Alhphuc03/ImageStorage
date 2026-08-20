@@ -134,6 +134,7 @@ export async function handler(event) {
         Key: key,
         Body: buffer,
         ContentType: contentType,
+        CacheControl: 'public, max-age=31536000, immutable',
       });
 
       await s3.send(command);
@@ -191,6 +192,7 @@ export async function handler(event) {
               Bucket: bucketName,
               Key: key,
               ContentType: contentType,
+              CacheControl: 'public, max-age=31536000, immutable',
             });
 
             const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
@@ -234,6 +236,7 @@ export async function handler(event) {
         Bucket: bucketName,
         Key: key,
         ContentType: contentType,
+        CacheControl: 'public, max-age=31536000, immutable',
       });
 
       const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });

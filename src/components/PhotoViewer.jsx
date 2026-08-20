@@ -69,6 +69,22 @@ export default function PhotoViewer({
     }
   }, [currentIndex, currentPhoto?.id]);
 
+  // Tải trước ngầm ảnh liền kề (trước, sau) để vuốt phóng to chuyển ảnh mượt mà 60fps
+  useEffect(() => {
+    if (!photoList || photoList.length <= 1) return;
+    const nextIdx = (currentIndex + 1) % photoList.length;
+    const prevIdx = (currentIndex - 1 + photoList.length) % photoList.length;
+    const next2Idx = (currentIndex + 2) % photoList.length;
+
+    [nextIdx, prevIdx, next2Idx].forEach((idx) => {
+      const p = photoList[idx];
+      if (p?.url) {
+        const img = new Image();
+        img.src = p.url;
+      }
+    });
+  }, [currentIndex, photoList]);
+
   // Cuộn chuột để Phóng to / Thu nhỏ (Mouse Wheel Zoom)
   useEffect(() => {
     const el = contentAreaRef.current;
