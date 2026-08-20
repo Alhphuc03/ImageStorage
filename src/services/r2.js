@@ -1,6 +1,6 @@
 /**
- * Dịch vụ nén ảnh thông minh và lưu trữ lên Cloudflare R2 Object Storage
- * Hỗ trợ mọi loại ảnh: JPG, PNG, WEBP, HEIC/HEIF (iPhone), GIF, SVG, BMP, AVIF
+ * Dịch vụ nén ảnh thông minh và lưu trữ siêu tốc lên Cloudflare R2 Object Storage
+ * Hỗ trợ tải trực tiếp qua Pre-signed URL (tốc độ cao) và fallback Netlify Direct
  */
 import heic2any from 'heic2any';
 
@@ -105,11 +105,11 @@ export const saveR2Config = (config) => {
 };
 
 /**
- * Xử lý file ảnh trước khi nén (chuyển đổi HEIC của iPhone sang JPEG/PNG trước)
+ * Xử lý file ảnh trước khi nén (chuyển đổi HEIC của iPhone sang JPEG trước)
  */
 const prepareImageFile = async (file) => {
-  const fileName = file.name.toLowerCase();
-  const fileType = file.type.toLowerCase();
+  const fileName = (file.name || '').toLowerCase();
+  const fileType = (file.type || '').toLowerCase();
 
   // 1. Nếu là ảnh HEIC/HEIF từ iPhone / iPad
   if (
@@ -122,7 +122,7 @@ const prepareImageFile = async (file) => {
       const convertedBlob = await heic2any({
         blob: file,
         toType: 'image/jpeg',
-        quality: 0.92
+        quality: 0.90
       });
       const singleBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
       return new File([singleBlob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), {
@@ -137,10 +137,9 @@ const prepareImageFile = async (file) => {
 };
 
 /**
- * Nén ảnh thông minh tại Client sang định dạng WebP siêu nhẹ
+ * Nén ảnh thông minh tại Client sang định dạng WebP siêu nhẹ, không tạo base64 rác
  * @param {File} rawFile - File ảnh ban đầu
- * @param {string} profileKey - Mức nén (max_saver, balanced, high_quality, original)
- * @returns {Promise<{ blob: Blob, dataUrl: string, width: number, height: number, originalSize: number, compressedSize: number, filename: string, contentType: string }>}
+ * @param {string} profileKey - Mức nén
  */
 export const compressImageSmart = async (rawFile, profileKey = null) => {
   const file = await prepareImageFile(rawFile);
@@ -153,15 +152,8 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
 
   // SVG hoặc GIF ảnh động hoặc chế độ Original -> Giữ nguyên file gốc
   if (isSvg || isGif || profileName === 'original') {
-    const dataUrl = await new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.onload = (e) => resolve(e.target.result);
-      reader.readAsDataURL(file);
-    });
-
     return {
       blob: file,
-      dataUrl,
       width: 1200,
       height: 800,
       originalSize: file.size,
@@ -172,7 +164,6 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
     };
   }
 
-  // Tối ưu các định dạng ảnh raster thông thường (JPG, PNG, WebP, BMP, v.v.)
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -197,25 +188,30 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
         canvas.height = height;
         const ctx = canvas.getContext('2d');
 
-        // Bật làm mịn ảnh
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Xuất ra WebP với chất lượng tối ưu
         const outputFormat = 'image/webp';
-        const dataUrl = canvas.toDataURL(outputFormat, profile.quality);
 
         canvas.toBlob(
           (blob) => {
             if (!blob) {
-              return reject(new Error('Không thể nén ảnh thành công'));
+              return resolve({
+                blob: file,
+                width: img.width,
+                height: img.height,
+                originalSize: file.size,
+                compressedSize: file.size,
+                filename: fileName,
+                contentType: file.type || 'image/jpeg',
+                isOriginal: true
+              });
             }
 
             const cleanName = fileName.replace(/\.[^/.]+$/, '') + '.webp';
             resolve({
               blob,
-              dataUrl,
               width,
               height,
               originalSize: rawFile.size,
@@ -233,7 +229,6 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
       img.onerror = () => {
         resolve({
           blob: file,
-          dataUrl: e.target.result,
           width: 1200,
           height: 800,
           originalSize: file.size,
@@ -253,76 +248,25 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
 };
 
 /**
- * Tải ảnh lên Cloudflare R2 thông qua Netlify Serverless API
- * @param {File} file - File ảnh
- * @param {Object} customConfig - Cấu hình R2 (tùy chọn)
- * @param {Function} onProgress - Callback tiến độ (0 - 100)
+ * Lấy danh sách Presigned URLs hàng loạt trong 1 request duy nhất
  */
-export const uploadToR2 = async (file, customConfig = null, onProgress = null) => {
-  // 1. Tiến hành nén ảnh thông minh trước (WebP ~150KB - 250KB)
-  if (onProgress) onProgress(15);
-  const compressed = await compressImageSmart(file);
-  if (onProgress) onProgress(35);
-
+export const getPresignedBatchUrls = async (fileItems, customConfig = null) => {
   const localConfig = customConfig || getStoredR2Config();
   const apiEndpoint = '/.netlify/functions/r2';
 
-  // 2. Nếu dung lượng sau nén nhỏ (< 3.5MB), gửi trực tiếp qua Netlify Serverless Function (ổn định, không lỗi CORS)
-  if (compressed.compressedSize < 3.5 * 1024 * 1024) {
-    try {
-      const uploadPayload = {
-        action: 'upload_direct',
-        filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
-        contentType: compressed.contentType,
-        folder: localConfig.folder || 'photos',
-        base64: compressed.dataUrl,
-        config: {
-          accountId: localConfig.accountId || '',
-          accessKeyId: localConfig.accessKeyId || '',
-          secretAccessKey: localConfig.secretAccessKey || '',
-          bucketName: localConfig.bucketName || '',
-          publicDomain: localConfig.publicDomain || '',
-          folder: localConfig.folder || 'photos'
-        }
-      };
+  const filesPayload = fileItems.map(item => ({
+    id: item.id,
+    filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${item.name.replace(/\.[^/.]+$/, '')}.webp`,
+    contentType: 'image/webp',
+    folder: localConfig.folder || 'photos'
+  }));
 
-      if (onProgress) onProgress(65);
-
-      const res = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(uploadPayload)
-      });
-
-      const resData = await res.json();
-
-      if (res.ok && resData.success && resData.publicUrl) {
-        if (onProgress) onProgress(100);
-        return {
-          url: resData.publicUrl,
-          key: resData.key,
-          public_id: resData.key,
-          originalSize: compressed.originalSize,
-          compressedSize: compressed.compressedSize,
-          width: compressed.width,
-          height: compressed.height,
-          isLocal: false
-        };
-      }
-    } catch (e) {
-      console.warn('Upload direct qua Netlify gặp sự cố, tự động chuyển sang Presigned URL:', e);
-    }
-  }
-
-  // 3. Fallback hoặc cho file dung lượng lớn: Tạo Pre-signed URL để tải thẳng trực tiếp vào R2 Bucket
-  const presignRes = await fetch(apiEndpoint, {
+  const res = await fetch(apiEndpoint, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      action: 'presign',
-      filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
-      contentType: compressed.contentType,
-      folder: localConfig.folder || 'photos',
+      action: 'presign_batch',
+      files: filesPayload,
       config: {
         accountId: localConfig.accountId || '',
         accessKeyId: localConfig.accessKeyId || '',
@@ -334,32 +278,114 @@ export const uploadToR2 = async (file, customConfig = null, onProgress = null) =
     })
   });
 
-  const presignData = await presignRes.json();
-  if (!presignRes.ok || !presignData.success || !presignData.uploadUrl) {
-    throw new Error(presignData.message || 'Không thể tạo liên kết tải ảnh Cloudflare R2');
+  const data = await res.json();
+  if (res.ok && data.success && Array.isArray(data.results)) {
+    return data.results;
+  }
+  return null;
+};
+
+/**
+ * Tải 1 ảnh lên Cloudflare R2 với tốc độ cao nhất (Ưu tiên Direct Pre-signed PUT, fallback Direct Netlify)
+ */
+export const uploadToR2 = async (file, customConfig = null, onProgress = null, presignedInfo = null) => {
+  if (onProgress) onProgress(20);
+  const compressed = await compressImageSmart(file);
+  if (onProgress) onProgress(50);
+
+  const localConfig = customConfig || getStoredR2Config();
+  const apiEndpoint = '/.netlify/functions/r2';
+
+  // 1. Nếu có sẵn presigned URL hoặc tạo mới presigned URL: Upload trực tiếp vào Cloudflare R2 Edge (Cực nhanh, ~100-200ms)
+  let uploadUrl = presignedInfo?.uploadUrl;
+  let publicUrl = presignedInfo?.publicUrl;
+  let key = presignedInfo?.key;
+
+  if (!uploadUrl) {
+    try {
+      const presignRes = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'presign',
+          filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
+          contentType: compressed.contentType,
+          folder: localConfig.folder || 'photos',
+          config: localConfig
+        })
+      });
+
+      const presignData = await presignRes.json();
+      if (presignRes.ok && presignData.success && presignData.uploadUrl) {
+        uploadUrl = presignData.uploadUrl;
+        publicUrl = presignData.publicUrl;
+        key = presignData.key;
+      }
+    } catch (err) {
+      console.warn('Lấy presign URL thất bại, chuyển sang direct payload:', err);
+    }
   }
 
-  if (onProgress) onProgress(70);
+  // Thực hiện PUT trực tiếp lên Cloudflare R2
+  if (uploadUrl) {
+    try {
+      const putRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': compressed.contentType
+        },
+        body: compressed.blob
+      });
 
-  // Upload trực tiếp lên Cloudflare R2 (Bỏ qua mọi giới hạn payload của máy chủ trung gian)
-  const putRes = await fetch(presignData.uploadUrl, {
-    method: 'PUT',
-    headers: {
-      'Content-Type': compressed.contentType
-    },
-    body: compressed.blob
+      if (putRes.ok) {
+        if (onProgress) onProgress(100);
+        return {
+          url: publicUrl,
+          key: key,
+          public_id: key,
+          originalSize: compressed.originalSize,
+          compressedSize: compressed.compressedSize,
+          width: compressed.width,
+          height: compressed.height,
+          isLocal: false
+        };
+      }
+    } catch (putErr) {
+      console.warn('Direct PUT lên R2 gặp lỗi CORS/Network, chuyển sang Netlify direct upload:', putErr);
+    }
+  }
+
+  // 2. Fallback: Nếu không upload trực tiếp được, chuyển sang Netlify direct upload
+  const base64Data = await new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.readAsDataURL(compressed.blob);
   });
 
-  if (!putRes.ok) {
-    throw new Error(`Tải trực tiếp lên R2 thất bại (HTTP ${putRes.status})`);
+  const res = await fetch(apiEndpoint, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      action: 'upload_direct',
+      filename: `img_${Date.now()}_${Math.random().toString(36).substr(2, 6)}_${compressed.filename}`,
+      contentType: compressed.contentType,
+      folder: localConfig.folder || 'photos',
+      base64: base64Data,
+      config: localConfig
+    })
+  });
+
+  const resData = await res.json();
+  if (!res.ok || !resData.success || !resData.publicUrl) {
+    throw new Error(resData.message || 'Tải ảnh lên Cloudflare R2 thất bại');
   }
 
   if (onProgress) onProgress(100);
 
   return {
-    url: presignData.publicUrl,
-    key: presignData.key,
-    public_id: presignData.key,
+    url: resData.publicUrl,
+    key: resData.key,
+    public_id: resData.key,
     originalSize: compressed.originalSize,
     compressedSize: compressed.compressedSize,
     width: compressed.width,
@@ -369,7 +395,7 @@ export const uploadToR2 = async (file, customConfig = null, onProgress = null) =
 };
 
 /**
- * Kiểm tra trạng thái máy chủ R2 hoặc cấu hình tùy chỉnh
+ * Kiểm tra kết nối tới R2
  */
 export const testR2Connection = async (config = null) => {
   const targetConfig = config || getStoredR2Config();
@@ -395,7 +421,7 @@ export const testR2Connection = async (config = null) => {
 };
 
 /**
- * Lấy trạng thái biến môi trường R2 từ Server
+ * Kiểm tra trạng thái máy chủ R2
  */
 export const checkServerR2Status = async () => {
   try {

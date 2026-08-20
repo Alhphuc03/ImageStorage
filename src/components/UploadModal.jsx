@@ -151,7 +151,7 @@ export default function UploadModal({
     selectedItems.reduce((acc, i) => acc + (i.size || 0), 0) / (1024 * 1024)
   ).toFixed(1);
 
-  // Xử lý upload đa luồng song song (Concurrent Queue) - Giúp up 50-100 ảnh cực nhanh
+  // Xử lý upload đa luồng siêu tốc (Batch Presigned + 5 Workers trực tiếp tới Cloudflare R2)
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (selectedItems.length === 0) {
@@ -160,8 +160,8 @@ export default function UploadModal({
     }
 
     setIsUploading(true);
-    setUploadProgress(2);
-    setUploadStatusText(`Bắt đầu xử lý ${selectedItems.length} bức ảnh...`);
+    setUploadProgress(5);
+    setUploadStatusText(`Đang chuẩn bị đường truyền siêu tốc cho ${selectedItems.length} bức ảnh...`);
     setErrorMessage('');
 
     const targetFolder = visibleFolders.find(f => f.id === targetFolderId);
@@ -172,59 +172,74 @@ export default function UploadModal({
     let completedCount = 0;
     const totalFiles = selectedItems.length;
 
-    // Chạy song song tối đa 3 ảnh cùng lúc để đạt tốc độ tối đa mà không nghẽn mạng
-    const CONCURRENCY_LIMIT = 3;
-    const queue = [...selectedItems];
-
-    const worker = async () => {
-      while (queue.length > 0) {
-        const item = queue.shift();
-        if (!item) break;
-
-        const file = item.file;
-        const indexNum = totalFiles - queue.length;
-        setUploadStatusText(`Đang tải ảnh: "${file.name}" (${completedCount + 1}/${totalFiles})...`);
-
-        try {
-          const result = await uploadToR2(
-            file,
-            r2Config,
-            () => {
-              // cập nhật tiến độ tương đối
-            }
-          );
-
-          const newPhoto = {
-            id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-            title: file.name.replace(/\.[^/.]+$/, '') || 'Ảnh mới',
-            url: result.url,
-            folderId: targetFolderId,
-            isPublic: finalIsPublic,
-            createdBy: currentUser?.username || 'admin',
-            createdByName: currentUser?.fullName || currentUser?.username || 'Admin',
-            date: new Date().toLocaleDateString('vi-VN'),
-            isFavorite: false,
-            createdAt: new Date().toISOString(),
-            fileSize: result.compressedSize 
-              ? `${(result.compressedSize / 1024).toFixed(0)} KB` 
-              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
-            originalSize: file.size,
-            compressedSize: result.compressedSize
-          };
-
-          uploadedPhotos.push(newPhoto);
-        } catch (err) {
-          console.error(`Lỗi khi tải ảnh ${file.name}:`, err);
-          failedItems.push(item);
-        } finally {
-          completedCount++;
-          const overall = Math.round((completedCount / totalFiles) * 100);
-          setUploadProgress(Math.min(overall, 99));
-        }
-      }
-    };
-
     try {
+      // 1. Tạo trước toàn bộ Presigned URLs hàng loạt chỉ trong 1 request duy nhất (~100ms)
+      let presignedMap = new Map();
+      try {
+        const batchResults = await getPresignedBatchUrls(selectedItems, r2Config);
+        if (Array.isArray(batchResults)) {
+          batchResults.forEach(res => {
+            if (res?.id) presignedMap.set(res.id, res);
+          });
+        }
+      } catch (presignBatchErr) {
+        console.warn('Batch presign không khả dụng, sử dụng presign từng ảnh:', presignBatchErr);
+      }
+
+      setUploadProgress(10);
+      setUploadStatusText(`Đang nén và tải siêu tốc ${totalFiles} ảnh...`);
+
+      // 2. Chạy 5 luồng song song đẩy trực tiếp vào Cloudflare R2 Edge
+      const CONCURRENCY_LIMIT = 5;
+      const queue = [...selectedItems];
+
+      const worker = async () => {
+        while (queue.length > 0) {
+          const item = queue.shift();
+          if (!item) break;
+
+          const file = item.file;
+          const presignedInfo = presignedMap.get(item.id);
+
+          try {
+            const result = await uploadToR2(
+              file,
+              r2Config,
+              null,
+              presignedInfo
+            );
+
+            const newPhoto = {
+              id: `photo_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
+              title: file.name.replace(/\.[^/.]+$/, '') || 'Ảnh mới',
+              url: result.url,
+              folderId: targetFolderId,
+              isPublic: finalIsPublic,
+              createdBy: currentUser?.username || 'admin',
+              createdByName: currentUser?.fullName || currentUser?.username || 'Admin',
+              date: new Date().toLocaleDateString('vi-VN'),
+              isFavorite: false,
+              createdAt: new Date().toISOString(),
+              fileSize: result.compressedSize 
+                ? `${(result.compressedSize / 1024).toFixed(0)} KB` 
+                : `${(file.size / (1024 * 1024)).toFixed(1)} MB`,
+              originalSize: file.size,
+              compressedSize: result.compressedSize
+            };
+
+            uploadedPhotos.push(newPhoto);
+          } catch (err) {
+            console.error(`Lỗi khi tải ảnh ${file.name}:`, err);
+            failedItems.push(item);
+          } finally {
+            completedCount++;
+            const overall = Math.round(10 + ((completedCount / totalFiles) * 88));
+            setUploadProgress(Math.min(overall, 98));
+            setUploadStatusText(`Đang tải ảnh (${completedCount}/${totalFiles}): "${file.name}"...`);
+          }
+        }
+      };
+
       const workers = Array.from({ length: Math.min(CONCURRENCY_LIMIT, totalFiles) }, () => worker());
       await Promise.all(workers);
 
@@ -238,14 +253,14 @@ export default function UploadModal({
       if (failedItems.length === 0) {
         setUploadStatusText(`Đã tải lên thành công toàn bộ ${uploadedPhotos.length} bức ảnh!`);
         if (speechEnabled) {
-          speechAssistant.speak(`Đã tải lên thành công ${uploadedPhotos.length} bức ảnh vào album.`);
+          speechAssistant.speak(`Đã tải lên thành công ${uploadedPhotos.length} bức ảnh.`);
         }
         handleClearAll();
         onClose();
       } else {
         // Giữ lại các ảnh bị lỗi để người dùng có thể bấm thử lại
         setSelectedItems(failedItems);
-        const errMsg = `Đã tải thành công ${uploadedPhotos.length} ảnh. Có ${failedItems.length} ảnh bị lỗi do mạng, bạn có thể bấm "Thử Lại" để tải tiếp.`;
+        const errMsg = `Đã tải thành công ${uploadedPhotos.length} ảnh. Có ${failedItems.length} ảnh bị lỗi mạng, bạn có thể bấm "Thử Lại" để tải tiếp.`;
         setErrorMessage(errMsg);
         if (speechEnabled) {
           speechAssistant.speak(`Đã tải xong ${uploadedPhotos.length} ảnh. Còn ${failedItems.length} ảnh lỗi.`);

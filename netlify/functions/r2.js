@@ -160,8 +160,8 @@ export async function handler(event) {
       };
     }
 
-    // 4. Tạo Pre-signed URL
-    if (action === 'presign' || (event.httpMethod === 'POST' && (!action || action === 'presign'))) {
+    // 4. Tạo Pre-signed URL đơn lẻ hoặc hàng loạt (Batch)
+    if (action === 'presign_batch' || action === 'presign' || (event.httpMethod === 'POST' && (!action || action === 'presign'))) {
       const config = body.config || {};
       const { bucketName, publicDomain } = getBucketAndDomain(config);
       
@@ -177,6 +177,54 @@ export async function handler(event) {
       }
 
       const s3 = getS3Client(config);
+
+      // Nếu yêu cầu tạo hàng loạt (presign_batch)
+      if (action === 'presign_batch' && Array.isArray(body.files) && body.files.length > 0) {
+        const batchResults = await Promise.all(
+          body.files.map(async (fileItem) => {
+            const filename = fileItem.filename || `image_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.webp`;
+            const contentType = fileItem.contentType || 'image/webp';
+            const folder = (fileItem.folder || config.folder || 'photos').replace(/^\/+|\/+$/g, '');
+            const key = folder ? `${folder}/${filename}` : filename;
+
+            const command = new PutObjectCommand({
+              Bucket: bucketName,
+              Key: key,
+              ContentType: contentType,
+            });
+
+            const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
+            let publicUrl = '';
+            if (publicDomain) {
+              publicUrl = `${publicDomain}/${key}`;
+            } else {
+              const accountId = config.accountId || process.env.R2_ACCOUNT_ID;
+              publicUrl = `https://${bucketName}.${accountId}.r2.cloudflarestorage.com/${key}`;
+            }
+
+            return {
+              id: fileItem.id,
+              uploadUrl,
+              publicUrl,
+              key,
+              bucket: bucketName,
+              filename,
+              contentType,
+            };
+          })
+        );
+
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({
+            success: true,
+            results: batchResults,
+          }),
+        };
+      }
+
+      // Tạo presign cho 1 file đơn lẻ
       const filename = body.filename || `image_${Date.now()}_${Math.random().toString(36).substr(2, 6)}.webp`;
       const contentType = body.contentType || 'image/webp';
       const folder = (body.folder || config.folder || 'photos').replace(/^\/+|\/+$/g, '');
@@ -188,7 +236,7 @@ export async function handler(event) {
         ContentType: contentType,
       });
 
-      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 1800 });
+      const uploadUrl = await getSignedUrl(s3, command, { expiresIn: 3600 });
 
       let publicUrl = '';
       if (publicDomain) {
