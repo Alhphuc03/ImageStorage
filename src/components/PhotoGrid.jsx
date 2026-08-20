@@ -424,102 +424,125 @@ export default function PhotoGrid({
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: 12,
+          gap: 14,
           marginTop: 28,
-          marginBottom: 10,
-          padding: '16px',
+          marginBottom: 16,
+          padding: '18px 16px',
           background: 'var(--color-surface)',
           borderRadius: 'var(--radius-md)',
-          border: '1px solid var(--color-border)'
+          border: '1.5px solid var(--color-border)',
+          boxShadow: 'var(--shadow-sm)'
         }}>
-          {/* Thông tin dòng */}
-          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-sub)' }}>
-            Hiển thị ảnh <strong>{startIndex + 1}</strong> - <strong>{endIndex}</strong> trong tổng số <strong style={{ color: 'var(--color-primary)' }}>{filteredPhotos.length}</strong> bức ảnh
-          </div>
-
-          {/* Các nút bấm phân trang */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
-            {/* Nút Về trang đầu */}
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => handlePageChange(1)}
-              disabled={safeCurrentPage === 1}
-              style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: safeCurrentPage === 1 ? 0.4 : 1 }}
-              title="Trang đầu"
-            >
-              <ChevronsLeft size={16} />
-            </button>
-
-            {/* Nút Trang trước */}
+          {/* HÀNG 1: 2 NÚT BẤM TO RÕ DỄ BẤM (TRANG TRƯỚC - TRANG SAU) */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            width: '100%',
+            maxWidth: 420
+          }}>
+            {/* Nút Trang Trước */}
             <button
               type="button"
               className="btn-secondary"
               onClick={() => handlePageChange(safeCurrentPage - 1)}
               disabled={safeCurrentPage === 1}
-              style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4, opacity: safeCurrentPage === 1 ? 0.4 : 1 }}
+              style={{
+                flex: 1,
+                height: 48,
+                padding: '0 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                fontSize: 'var(--font-base)',
+                fontWeight: 700,
+                borderRadius: 'var(--radius-md)',
+                background: safeCurrentPage === 1 ? 'var(--color-surface-hover)' : 'var(--color-surface)',
+                border: '1.5px solid var(--color-border)',
+                color: safeCurrentPage === 1 ? 'var(--color-text-sub)' : 'var(--color-text-main)',
+                cursor: safeCurrentPage === 1 ? 'not-allowed' : 'pointer',
+                opacity: safeCurrentPage === 1 ? 0.45 : 1,
+                boxShadow: safeCurrentPage === 1 ? 'none' : 'var(--shadow-sm)'
+              }}
             >
-              <ChevronLeft size={16} />
-              <span style={{ fontSize: 'var(--font-sm)' }}>Trước</span>
+              <ChevronLeft size={22} />
+              <span>Trang Trước</span>
             </button>
 
-            {/* Danh sách các số trang */}
-            {getPaginationNumbers().map((p, idx) => {
-              if (p === '...') {
-                return (
-                  <span key={`dots_${idx}`} style={{ padding: '0 6px', color: 'var(--color-text-sub)', fontSize: 14 }}>
-                    ...
-                  </span>
-                );
-              }
-
-              const isPageActive = p === safeCurrentPage;
-              return (
-                <button
-                  key={`page_${p}`}
-                  type="button"
-                  onClick={() => handlePageChange(p)}
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 'var(--radius-sm)',
-                    border: isPageActive ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
-                    background: isPageActive ? 'var(--color-primary)' : 'var(--color-surface)',
-                    color: isPageActive ? '#ffffff' : 'var(--color-text-main)',
-                    fontWeight: isPageActive ? 800 : 600,
-                    fontSize: 'var(--font-sm)',
-                    cursor: 'pointer',
-                    transition: 'all 0.15s ease'
-                  }}
-                >
-                  {p}
-                </button>
-              );
-            })}
-
-            {/* Nút Trang sau */}
+            {/* Nút Trang Sau */}
             <button
               type="button"
-              className="btn-secondary"
+              className="btn-primary"
               onClick={() => handlePageChange(safeCurrentPage + 1)}
               disabled={safeCurrentPage === totalPages}
-              style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4, opacity: safeCurrentPage === totalPages ? 0.4 : 1 }}
+              style={{
+                flex: 1,
+                height: 48,
+                padding: '0 16px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 8,
+                fontSize: 'var(--font-base)',
+                fontWeight: 700,
+                borderRadius: 'var(--radius-md)',
+                cursor: safeCurrentPage === totalPages ? 'not-allowed' : 'pointer',
+                opacity: safeCurrentPage === totalPages ? 0.45 : 1,
+                boxShadow: safeCurrentPage === totalPages ? 'none' : 'var(--shadow-md)'
+              }}
             >
-              <span style={{ fontSize: 'var(--font-sm)' }}>Sau</span>
-              <ChevronRight size={16} />
+              <span>Trang Sau</span>
+              <ChevronRight size={22} />
             </button>
+          </div>
 
-            {/* Nút Tới trang cuối */}
-            <button
-              type="button"
-              className="btn-secondary"
-              onClick={() => handlePageChange(totalPages)}
-              disabled={safeCurrentPage === totalPages}
-              style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: safeCurrentPage === totalPages ? 0.4 : 1 }}
-              title="Trang cuối"
-            >
-              <ChevronsRight size={16} />
-            </button>
+          {/* HÀNG 2: CHỈ BÁO VỊ TRÍ TRANG (1 2 ... 5 ... 9 10) ĐỂ XEM VỊ TRÍ */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 6
+          }}>
+            {/* Dải số trang chỉ báo */}
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              fontSize: 'var(--font-sm)',
+              color: 'var(--color-text-sub)',
+              fontWeight: 600,
+              userSelect: 'none'
+            }}>
+              {getPaginationNumbers().map((p, idx) => {
+                if (p === '...') {
+                  return <span key={`dots_${idx}`} style={{ opacity: 0.5 }}>..</span>;
+                }
+                const isCurrent = p === safeCurrentPage;
+                return (
+                  <span
+                    key={`p_ind_${p}`}
+                    style={{
+                      padding: isCurrent ? '2px 10px' : '2px 4px',
+                      borderRadius: isCurrent ? 'var(--radius-sm)' : 0,
+                      background: isCurrent ? 'var(--color-primary-light)' : 'transparent',
+                      color: isCurrent ? 'var(--color-primary)' : 'var(--color-text-sub)',
+                      fontWeight: isCurrent ? 800 : 500,
+                      border: isCurrent ? '1.5px solid var(--color-primary)' : 'none',
+                      fontSize: isCurrent ? '15px' : '13px'
+                    }}
+                  >
+                    {p}
+                  </span>
+                );
+              })}
+            </div>
+
+            {/* Dòng tóm tắt số lượng */}
+            <div style={{ fontSize: '13px', color: 'var(--color-text-sub)', textAlign: 'center' }}>
+              Hiển thị ảnh <strong>{startIndex + 1}</strong> - <strong>{endIndex}</strong> trong tổng số <strong>{filteredPhotos.length}</strong> bức ảnh (Trang {safeCurrentPage}/{totalPages})
+            </div>
           </div>
         </div>
       )}
