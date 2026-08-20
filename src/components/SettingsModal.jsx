@@ -179,81 +179,80 @@ export default function SettingsModal({
             </div>
           )}
 
-          {/* CÁC TÍNH NĂNG R2 & NÉN ẢNH (CHỈ DÀNH CHO ADMIN) */}
+          {/* 1. CÀI ĐẶT CLOUDFLARE R2 (CHỈ DÀNH CHO ADMIN) */}
           {isAdmin && (
-            <>
-              {/* 1. Cài đặt Cloudflare R2 */}
-              <div className="form-group">
-                <label className="form-label" style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
-                  ⚡ Lưu trữ đám mây Cloudflare R2 (10GB Miễn phí):
-                </label>
-                <button
-                  type="button"
-                  className="btn-secondary"
-                  style={{
-                    width: '100%',
-                    height: 44,
-                    justifyContent: 'space-between',
-                    padding: '0 16px',
-                    borderColor: isR2Connected ? '#10b981' : '#f6821f',
-                    color: isR2Connected ? 'var(--color-text-main)' : '#ea580c'
-                  }}
-                  onClick={() => {
-                    onClose();
-                    onOpenR2();
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Cloud size={20} color={isR2Connected ? '#10b981' : '#f6821f'} />
-                    <span>{isR2Connected ? 'R2 Cloud: Đã cấu hình' : 'Cấu hình Cloudflare R2'}</span>
-                  </span>
-                  <span style={{ fontSize: 'var(--font-sm)', textDecoration: 'underline', color: '#ea580c', fontWeight: 700 }}>
-                    Thiết lập &gt;
-                  </span>
-                </button>
-              </div>
+            <div className="form-group">
+              <label className="form-label" style={{ fontWeight: 700, color: 'var(--color-primary)' }}>
+                ⚡ Lưu trữ đám mây Cloudflare R2 (10GB Miễn phí):
+              </label>
+              <button
+                type="button"
+                className="btn-secondary"
+                style={{
+                  width: '100%',
+                  height: 44,
+                  justifyContent: 'space-between',
+                  padding: '0 16px',
+                  borderColor: isR2Connected ? '#10b981' : '#f6821f',
+                  color: isR2Connected ? 'var(--color-text-main)' : '#ea580c'
+                }}
+                onClick={() => {
+                  onClose();
+                  onOpenR2();
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Cloud size={20} color={isR2Connected ? '#10b981' : '#f6821f'} />
+                  <span>{isR2Connected ? 'R2 Cloud: Đã cấu hình' : 'Cấu hình Cloudflare R2'}</span>
+                </span>
+                <span style={{ fontSize: 'var(--font-sm)', textDecoration: 'underline', color: '#ea580c', fontWeight: 700 }}>
+                  Thiết lập &gt;
+                </span>
+              </button>
+            </div>
+          )}
 
-              {/* 2. Mức độ nén ảnh thông minh */}
-              <div className="form-group" style={{ background: 'var(--color-surface-hover)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
-                <label className="form-label" style={{ marginBottom: 6, fontWeight: 700 }}>
-                  <Zap size={16} color="#ea580c" /> Chế độ nén ảnh thông minh (WebP):
-                </label>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                  {Object.entries(COMPRESSION_PROFILES).map(([key, item]) => (
-                    <div
-                      key={key}
-                      onClick={() => handleCompressionChange(key)}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 10,
-                        padding: '8px 12px',
-                        borderRadius: 'var(--radius-sm)',
-                        border: `1.5px solid ${compressionProfile === key ? '#ea580c' : 'var(--color-border)'}`,
-                        background: compressionProfile === key ? 'rgba(234, 88, 12, 0.08)' : 'var(--color-surface)',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="compression"
-                        checked={compressionProfile === key}
-                        onChange={() => handleCompressionChange(key)}
-                        style={{ marginTop: 4, accentColor: '#ea580c' }}
-                      />
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 700, fontSize: 'var(--font-sm)', color: compressionProfile === key ? '#ea580c' : 'var(--color-text-main)' }}>
-                          {item.name}
-                        </div>
-                        <div style={{ fontSize: 12, color: 'var(--color-text-sub)', marginTop: 2 }}>
-                          {item.description}
-                        </div>
+          {/* 2. MỨC ĐỘ NÉN ẢNH THÔNG MINH (DÀNH CHO ADMIN VÀ EDITOR CÓ QUYỀN TẢI ẢNH) */}
+          {(isAdmin || currentUser?.role === 'editor') && (
+            <div className="form-group" style={{ background: 'var(--color-surface-hover)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+              <label className="form-label" style={{ marginBottom: 6, fontWeight: 700 }}>
+                <Zap size={16} color="#ea580c" /> Chế độ nén ảnh thông minh (WebP):
+              </label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {Object.entries(COMPRESSION_PROFILES).map(([key, item]) => (
+                  <div
+                    key={key}
+                    onClick={() => handleCompressionChange(key)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      padding: '8px 12px',
+                      borderRadius: 'var(--radius-sm)',
+                      border: `1.5px solid ${compressionProfile === key ? '#ea580c' : 'var(--color-border)'}`,
+                      background: compressionProfile === key ? 'rgba(234, 88, 12, 0.08)' : 'var(--color-surface)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="compression"
+                      checked={compressionProfile === key}
+                      onChange={() => handleCompressionChange(key)}
+                      style={{ marginTop: 4, accentColor: '#ea580c' }}
+                    />
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontWeight: 700, fontSize: 'var(--font-sm)', color: compressionProfile === key ? '#ea580c' : 'var(--color-text-main)' }}>
+                        {item.name}
+                      </div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-sub)', marginTop: 2 }}>
+                        {item.description}
                       </div>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            </>
+            </div>
           )}
 
           {/* 3. Giao diện Sáng / Tối */}

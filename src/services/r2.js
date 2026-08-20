@@ -110,7 +110,7 @@ const prepareImageFile = async (file) => {
   const fileName = (file.name || '').toLowerCase();
   const fileType = (file.type || '').toLowerCase();
 
-  // 1. Nếu là ảnh HEIC/HEIF từ iPhone / iPad -> Dynamic import heic2any để tiết kiệm 800KB bundle
+  // 1. Nếu là ảnh HEIC/HEIF từ iPhone / iPad -> Dynamic import heic2any
   if (
     fileType === 'image/heic' || 
     fileType === 'image/heif' || 
@@ -123,14 +123,14 @@ const prepareImageFile = async (file) => {
       const convertedBlob = await heic2any({
         blob: file,
         toType: 'image/jpeg',
-        quality: 0.90
+        quality: 0.82
       });
       const singleBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
       return new File([singleBlob], file.name.replace(/\.(heic|heif)$/i, '.jpg'), {
         type: 'image/jpeg'
       });
     } catch (err) {
-      console.warn('Lỗi khi chuyển đổi HEIC, tiếp tục thử bằng FileReader:', err);
+      console.warn('Lỗi khi chuyển đổi HEIC, tiếp tục thử bằng trình duyệt:', err);
     }
   }
 
@@ -138,7 +138,7 @@ const prepareImageFile = async (file) => {
 };
 
 /**
- * Nén ảnh thông minh tại Client sang định dạng WebP siêu nhẹ, không tạo base64 rác
+ * Nén ảnh thông minh tại Client sang định dạng WebP siêu nhẹ, tối ưu bộ nhớ RAM không tạo base64 rác
  * @param {File} rawFile - File ảnh ban đầu
  * @param {string} profileKey - Mức nén
  */
@@ -165,13 +165,22 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
     };
   }
 
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        let width = img.width;
-        let height = img.height;
+  return new Promise((resolve) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    const cleanup = () => {
+      try {
+        URL.revokeObjectURL(objectUrl);
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    img.onload = () => {
+      try {
+        let width = img.naturalWidth || img.width;
+        let height = img.naturalHeight || img.height;
         const maxDim = profile.maxDimension || 1800;
 
         if (width > maxDim || height > maxDim) {
@@ -193,41 +202,51 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
         ctx.imageSmoothingQuality = 'high';
         ctx.drawImage(img, 0, 0, width, height);
 
-        const outputFormat = 'image/webp';
+        // Thử nén sang WebP, nếu trình duyệt không hỗ trợ toBlob WebP thì fallback sang JPEG
+        const tryExport = (format, ext, fallbackFormat = null, fallbackExt = null) => {
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                cleanup();
+                const cleanName = fileName.replace(/\.[^/.]+$/, '') + ext;
+                return resolve({
+                  blob,
+                  width,
+                  height,
+                  originalSize: rawFile.size,
+                  compressedSize: blob.size,
+                  filename: cleanName,
+                  contentType: format,
+                  isOriginal: false
+                });
+              }
 
-        canvas.toBlob(
-          (blob) => {
-            if (!blob) {
-              return resolve({
+              if (fallbackFormat) {
+                return tryExport(fallbackFormat, fallbackExt, null, null);
+              }
+
+              // Fallback cuối cùng nếu cả 2 không được
+              cleanup();
+              resolve({
                 blob: file,
-                width: img.width,
-                height: img.height,
-                originalSize: file.size,
+                width,
+                height,
+                originalSize: rawFile.size,
                 compressedSize: file.size,
                 filename: fileName,
                 contentType: file.type || 'image/jpeg',
                 isOriginal: true
               });
-            }
+            },
+            format,
+            profile.quality || 0.80
+          );
+        };
 
-            const cleanName = fileName.replace(/\.[^/.]+$/, '') + '.webp';
-            resolve({
-              blob,
-              width,
-              height,
-              originalSize: rawFile.size,
-              compressedSize: blob.size,
-              filename: cleanName,
-              contentType: outputFormat,
-              isOriginal: false
-            });
-          },
-          outputFormat,
-          profile.quality
-        );
-      };
-
-      img.onerror = () => {
+        tryExport('image/webp', '.webp', 'image/jpeg', '.jpg');
+      } catch (err) {
+        console.warn('Lỗi khi vẽ canvas nén ảnh:', err);
+        cleanup();
         resolve({
           blob: file,
           width: 1200,
@@ -238,13 +257,25 @@ export const compressImageSmart = async (rawFile, profileKey = null) => {
           contentType: file.type || 'image/jpeg',
           isOriginal: true
         });
-      };
-
-      img.src = e.target.result;
+      }
     };
 
-    reader.onerror = () => reject(new Error('Không thể đọc file ảnh'));
-    reader.readAsDataURL(file);
+    img.onerror = (err) => {
+      console.warn('Lỗi khi tải ảnh vào bộ nhớ:', err);
+      cleanup();
+      resolve({
+        blob: file,
+        width: 1200,
+        height: 800,
+        originalSize: file.size,
+        compressedSize: file.size,
+        filename: fileName,
+        contentType: file.type || 'image/jpeg',
+        isOriginal: true
+      });
+    };
+
+    img.src = objectUrl;
   });
 };
 
