@@ -16,7 +16,7 @@ import {
 import { speechAssistant } from '../services/speech';
 import { isPhotoVisible } from '../services/auth';
 
-const PAGE_SIZE = 24; // Mỗi lần chỉ hiển thị 24 ảnh, cuộn tới đâu tải tới đó để máy siêu mượt
+const PAGE_SIZE = 10; // Trang chủ vừa mở lên chỉ nạp đúng 10 ảnh mới nhất, tránh tốn thời gian và dung lượng mạng
 
 export default function PhotoGrid({
   photos = [],
@@ -48,7 +48,7 @@ export default function PhotoGrid({
   const safePhotos = (photos || []).filter(Boolean);
   const safeFolders = (folders || []).filter(Boolean);
 
-  // Lọc ảnh theo thư mục, yêu thích, tìm kiếm và quyền xem riêng tư
+  // Lọc ảnh theo thư mục (khi bấm vào album mới kéo ảnh về), yêu thích, tìm kiếm và quyền xem riêng tư
   const filteredPhotos = safePhotos.filter((photo) => {
     if (!photo) return false;
 
@@ -57,6 +57,7 @@ export default function PhotoGrid({
       return false;
     }
 
+    // Khi chọn vào Album cụ thể, chỉ hiển thị đúng ảnh của album đó
     if (activeFolderId && activeFolderId !== 'all') {
       if (photo.folderId !== activeFolderId) return false;
     }
@@ -76,12 +77,12 @@ export default function PhotoGrid({
     return true;
   });
 
-  // Tự động reset số ảnh hiển thị về 24 khi chuyển Album, đổi bộ lọc hoặc tìm kiếm
+  // Tự động reset số ảnh hiển thị về đúng 10 ảnh khi chuyển Album, đổi bộ lọc hoặc tìm kiếm
   useEffect(() => {
     setVisibleCount(PAGE_SIZE);
   }, [activeFolderId, filterMode, searchQuery]);
 
-  // Tự động nạp thêm ảnh khi cuộn tới cuối trang (Infinite Scroll qua IntersectionObserver)
+  // Tự động nạp thêm 10 ảnh khi cuộn tới gần đáy (Infinite Scroll)
   useEffect(() => {
     if (!sentinelRef.current) return;
 
@@ -94,7 +95,7 @@ export default function PhotoGrid({
           return prev;
         });
       }
-    }, { rootMargin: '300px' });
+    }, { rootMargin: '120px' });
 
     observer.observe(sentinelRef.current);
     return () => observer.disconnect();
