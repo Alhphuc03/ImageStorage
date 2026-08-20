@@ -158,8 +158,19 @@ export default function App() {
     autoPlay: false
   });
 
-  // 6. Thông báo nổi (Toast)
+  // 6. Thông báo nổi (Toast) & Cài đặt PWA
   const [toast, setToast] = useState(null);
+  const [installPrompt, setInstallPrompt] = useState(null);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+  }, []);
 
   // Đồng bộ tùy chọn giao diện vào thẻ <html>
   useEffect(() => {
@@ -561,6 +572,7 @@ export default function App() {
             currentUser={currentUser}
             onOpenUsersModal={() => setIsUsersModalOpen(true)}
             onLogout={handleLogout}
+            installPrompt={installPrompt}
           />
         )}
 

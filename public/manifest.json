@@ -1,0 +1,20 @@
+{
+  "name": "Kho Ảnh Kỷ Niệm Gia Đình",
+  "short_name": "Kho Ảnh",
+  "description": "Kho lưu trữ và xem album ảnh kỷ niệm gia đình sắc nét, dễ dàng",
+  "start_url": "/",
+  "id": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "categories": ["photo", "family", "lifestyle"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

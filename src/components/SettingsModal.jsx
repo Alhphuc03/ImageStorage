@@ -14,7 +14,11 @@ import {
   Sparkles,
   Edit3,
   Zap,
-  HardDrive
+  HardDrive,
+  Smartphone,
+  Download,
+  Share,
+  CheckCircle2
 } from 'lucide-react';
 import { speechAssistant } from '../services/speech';
 import { 
@@ -40,7 +44,8 @@ export default function SettingsModal({
   onToggleEditMode,
   currentUser,
   onOpenUsersModal,
-  onLogout
+  onLogout,
+  installPrompt
 }) {
   const [compressionProfile, setCompressionProfile] = useState(() => getStoredCompressionProfile());
 
@@ -48,6 +53,13 @@ export default function SettingsModal({
 
   const isR2Connected = Boolean(r2Config?.bucketName || r2Config?.accountId);
   const isAdmin = currentUser?.role === 'admin';
+
+  const isStandalone = typeof window !== 'undefined' && (
+    window.matchMedia('(display-mode: standalone)').matches || 
+    window.navigator.standalone === true
+  );
+
+  const isIOS = typeof navigator !== 'undefined' && /iPad|iPhone|iPod/.test(navigator.userAgent || '');
 
   const handleSpeak = (text) => {
     if (speechEnabled) {
@@ -321,6 +333,56 @@ export default function SettingsModal({
               </span>
               <strong>{speechEnabled ? 'BẬT' : 'TẮT'}</strong>
             </button>
+          </div>
+
+          {/* 6. Cài đặt App lên Điện thoại / Máy tính (PWA) */}
+          <div className="form-group" style={{ background: 'var(--color-bg)', padding: 12, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+            <label className="form-label" style={{ fontWeight: 700, color: 'var(--color-primary)', display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+              <Smartphone size={18} /> Cài đặt ứng dụng vào điện thoại / PC:
+            </label>
+
+            {isStandalone ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#10b981', fontSize: 'var(--font-sm)', fontWeight: 700, padding: '6px 0' }}>
+                <CheckCircle2 size={18} />
+                <span>Bạn đang sử dụng ứng dụng ở chế độ đã cài đặt!</span>
+              </div>
+            ) : installPrompt ? (
+              <div>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  style={{ width: '100%', height: 42, justifyContent: 'center', gap: 8, fontSize: 'var(--font-sm)' }}
+                  onClick={async () => {
+                    installPrompt.prompt();
+                    const choice = await installPrompt.userChoice;
+                    if (choice.outcome === 'accepted') {
+                      handleSpeak('Đang cài đặt ứng dụng');
+                    }
+                  }}
+                >
+                  <Download size={18} />
+                  <span>Cài Đặt Ứng Dụng Ngay (1 Chạm)</span>
+                </button>
+                <div style={{ fontSize: 12, color: 'var(--color-text-sub)', marginTop: 6, textAlign: 'center' }}>
+                  Ứng dụng sẽ xuất hiện trên màn hình chính, mở nhanh 0s và không có thanh URL.
+                </div>
+              </div>
+            ) : isIOS ? (
+              <div style={{ fontSize: 13, color: 'var(--color-text-main)', lineHeight: 1.5, background: 'var(--color-surface)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6, color: '#2563eb' }}>
+                  <Share size={15} /> Cách cài đặt trên iPhone / iPad:
+                </div>
+                <div>1. Bấm vào nút <strong>Chia sẻ (biểu tượng ⎋)</strong> ở thanh công cụ Safari.</div>
+                <div>2. Cuộn xuống và chọn <strong>"Thêm vào Màn hình chính (Add to Home Screen)"</strong>.</div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, color: 'var(--color-text-main)', lineHeight: 1.5, background: 'var(--color-surface)', padding: 10, borderRadius: 'var(--radius-sm)', border: '1px solid var(--color-border)' }}>
+                <div style={{ fontWeight: 700, marginBottom: 4 }}>
+                  📥 Cài đặt ứng dụng:
+                </div>
+                <div>Bấm vào biểu tượng <strong>Cài đặt / Tải xuống</strong> trên thanh địa chỉ hoặc menu (⋮) của trình duyệt ➔ Chọn <strong>"Cài đặt ứng dụng Kho Ảnh"</strong>.</div>
+              </div>
+            )}
           </div>
 
           {/* 6. Khôi phục & Quản lý dữ liệu (CHỈ ADMIN) */}
