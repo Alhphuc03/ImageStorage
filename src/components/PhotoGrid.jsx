@@ -10,13 +10,15 @@ import {
   Play,
   Upload,
   ArrowLeft,
-  ChevronDown,
-  Loader2
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { speechAssistant } from '../services/speech';
 import { isPhotoVisible } from '../services/auth';
 
-const PAGE_SIZE = 10; // Trang chủ vừa mở lên chỉ nạp đúng 10 ảnh mới nhất, tránh tốn thời gian và dung lượng mạng
+const PAGE_SIZE = 10; // Phân trang cố định đúng 10 ảnh / trang
 
 export default function PhotoGrid({
   photos = [],
@@ -35,9 +37,8 @@ export default function PhotoGrid({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [internalFilterMode, setInternalFilterMode] = useState('all'); // 'all' | 'favorites'
-  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-  const sentinelRef = useRef(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const gridTopRef = useRef(null);
 
   const filterMode = propFilterMode !== undefined ? propFilterMode : internalFilterMode;
   const setFilterMode = (mode) => {
@@ -48,7 +49,7 @@ export default function PhotoGrid({
   const safePhotos = (photos || []).filter(Boolean);
   const safeFolders = (folders || []).filter(Boolean);
 
-  // Lọc ảnh theo thư mục (khi bấm vào album mới kéo ảnh về), yêu thích, tìm kiếm và quyền xem riêng tư
+  // Lọc ảnh: Nếu chọn Album thì chỉ lọc ảnh của Album đó, ngược lại hiển thị ảnh kho chung / tất cả
   const filteredPhotos = safePhotos.filter((photo) => {
     if (!photo) return false;
 
@@ -57,7 +58,7 @@ export default function PhotoGrid({
       return false;
     }
 
-    // Khi chọn vào Album cụ thể, chỉ hiển thị đúng ảnh của album đó
+    // Khi chọn vào Album cụ thể, chỉ lấy đúng ảnh của album đó
     if (activeFolderId && activeFolderId !== 'all') {
       if (photo.folderId !== activeFolderId) return false;
     }
@@ -77,32 +78,30 @@ export default function PhotoGrid({
     return true;
   });
 
-  // Tự động reset số ảnh hiển thị về đúng 10 ảnh khi chuyển Album, đổi bộ lọc hoặc tìm kiếm
+  // Reset về trang 1 khi chuyển Album, đổi bộ lọc hoặc tìm kiếm
   useEffect(() => {
-    setVisibleCount(PAGE_SIZE);
+    setCurrentPage(1);
   }, [activeFolderId, filterMode, searchQuery]);
 
-  // Tự động nạp thêm 10 ảnh khi cuộn tới gần đáy (Infinite Scroll)
-  useEffect(() => {
-    if (!sentinelRef.current) return;
+  // Tính toán phân trang
+  const totalPages = Math.ceil(filteredPhotos.length / PAGE_SIZE) || 1;
+  const safeCurrentPage = Math.min(Math.max(1, currentPage), totalPages);
+  
+  const startIndex = (safeCurrentPage - 1) * PAGE_SIZE;
+  const endIndex = Math.min(startIndex + PAGE_SIZE, filteredPhotos.length);
+  const currentPhotos = filteredPhotos.slice(startIndex, endIndex);
 
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        setVisibleCount((prev) => {
-          if (prev < filteredPhotos.length) {
-            return Math.min(prev + PAGE_SIZE, filteredPhotos.length);
-          }
-          return prev;
-        });
+  const handlePageChange = (newPage) => {
+    if (newPage >= 1 && newPage <= totalPages && newPage !== safeCurrentPage) {
+      setCurrentPage(newPage);
+      if (gridTopRef.current) {
+        gridTopRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, { rootMargin: '120px' });
-
-    observer.observe(sentinelRef.current);
-    return () => observer.disconnect();
-  }, [filteredPhotos.length]);
-
-  const visiblePhotos = filteredPhotos.slice(0, visibleCount);
-  const hasMore = visibleCount < filteredPhotos.length;
+      if (speechEnabled) {
+        speechAssistant.speak(`Trang ${newPage}`);
+      }
+    }
+  };
 
   const getFolderName = (folderId) => {
     if (filterMode === 'favorites') return '❤️ Ảnh Yêu Thích';
@@ -111,19 +110,32 @@ export default function PhotoGrid({
     return found ? `${found.icon || '📁'} ${found.name || ''}` : 'Album Ảnh';
   };
 
-  const handlePhotoClick = (indexInVisible) => {
+  const handlePhotoClick = (indexInPage) => {
     if (onOpenPhotoViewer) {
-      // Khi click vào ảnh, truyền toàn bộ filteredPhotos để người dùng vẫn có thể vuốt xem tiếp trong Viewer
-      onOpenPhotoViewer(filteredPhotos, indexInVisible);
+      const globalIndex = startIndex + indexInPage;
+      onOpenPhotoViewer(filteredPhotos, globalIndex);
     }
   };
 
-  const handleLoadMore = () => {
-    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredPhotos.length));
+  // Tạo danh sách số trang hiển thị gọn gàng (rút gọn dấu ...)
+  const getPaginationNumbers = () => {
+    const pages = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (safeCurrentPage <= 4) {
+        pages.push(1, 2, 3, 4, 5, '...', totalPages);
+      } else if (safeCurrentPage >= totalPages - 3) {
+        pages.push(1, '...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', safeCurrentPage - 1, safeCurrentPage, safeCurrentPage + 1, '...', totalPages);
+      }
+    }
+    return pages;
   };
 
   return (
-    <div className="photos-section">
+    <div className="photos-section" ref={gridTopRef}>
       {/* THANH QUAY LẠI KHI Ở TRONG ALBUM */}
       {activeFolderId && (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10, flexWrap: 'wrap' }}>
@@ -136,11 +148,11 @@ export default function PhotoGrid({
             style={{ height: 36, padding: '0 14px', fontSize: 'var(--font-sm)', fontWeight: 700 }}
           >
             <ArrowLeft size={16} />
-            <span>Quay Lại</span>
+            <span>Quay Lại Danh Sách Album</span>
           </button>
 
           <span style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-sub)' }}>
-            Album: <strong style={{ color: 'var(--color-text-main)' }}>{getFolderName(activeFolderId)}</strong>
+            Đang xem: <strong style={{ color: 'var(--color-text-main)' }}>{getFolderName(activeFolderId)}</strong>
           </span>
         </div>
       )}
@@ -221,9 +233,9 @@ export default function PhotoGrid({
             {activeFolderId ? getFolderName(activeFolderId) : filterMode === 'favorites' ? 'Ảnh Yêu Thích' : 'Tất Cả Ảnh'}
           </span>
           <span className="section-title-badge">
-            {filteredPhotos.length > PAGE_SIZE 
-              ? `${visiblePhotos.length} / ${filteredPhotos.length} ảnh` 
-              : `${filteredPhotos.length} ảnh`}
+            {filteredPhotos.length > 0
+              ? `Trang ${safeCurrentPage}/${totalPages} (${filteredPhotos.length} ảnh)`
+              : '0 ảnh'}
           </span>
         </h2>
 
@@ -253,10 +265,10 @@ export default function PhotoGrid({
         </div>
       </div>
 
-      {/* LƯỚI ẢNH GỌN GÀNG & ĐẸP */}
+      {/* LƯỚI 10 ẢNH CỦA TRANG HIỆN TẠI */}
       <div className="photos-grid">
-        {/* Thẻ Bấm Tải Ảnh Nhanh (Chỉ hiện khi ở Edit Mode và không phải Viewer) */}
-        {isEditMode && currentUser?.role !== 'viewer' && (
+        {/* Thẻ Bấm Tải Ảnh Nhanh (Chỉ hiện khi ở Edit Mode, ở trang 1 và không phải Viewer) */}
+        {isEditMode && currentUser?.role !== 'viewer' && safeCurrentPage === 1 && (
           <div 
             className="photo-card"
             onClick={onOpenUpload}
@@ -284,9 +296,9 @@ export default function PhotoGrid({
           </div>
         )}
 
-        {/* Danh sách ảnh đã được tối ưu hiển thị theo từng đợt */}
-        {visiblePhotos.length > 0 ? (
-          visiblePhotos.map((photo, idx) => {
+        {/* Danh sách đúng 10 ảnh của trang hiện tại */}
+        {currentPhotos.length > 0 ? (
+          currentPhotos.map((photo, idx) => {
             if (!photo) return null;
             const canDelete = isEditMode && currentUser?.role !== 'viewer' && (
               currentUser?.role === 'admin' || photo.createdBy === currentUser?.username
@@ -294,7 +306,7 @@ export default function PhotoGrid({
 
             return (
               <div 
-                key={photo.id || idx} 
+                key={photo.id || `${safeCurrentPage}_${idx}`} 
                 className="photo-card" 
                 onClick={() => handlePhotoClick(idx)}
                 style={{ cursor: 'pointer' }}
@@ -400,26 +412,109 @@ export default function PhotoGrid({
         )}
       </div>
 
-      {/* Điểm neo tự động load thêm khi cuộn tới đáy & Nút Xem thêm */}
-      {hasMore && (
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '24px 0 10px', gap: 10 }}>
-          <div ref={sentinelRef} style={{ height: 20 }} />
-          
-          <button
-            type="button"
-            className="btn-secondary"
-            onClick={handleLoadMore}
-            style={{
-              padding: '10px 24px',
-              borderRadius: 'var(--radius-full)',
-              fontWeight: 700,
-              fontSize: 'var(--font-sm)',
-              boxShadow: 'var(--shadow-sm)'
-            }}
-          >
-            <ChevronDown size={18} />
-            <span>Xem thêm ảnh ({filteredPhotos.length - visibleCount} ảnh còn lại)</span>
-          </button>
+      {/* THANH ĐIỀU HƯỚNG PHÂN TRANG (PAGINATION BAR) 10 ẢNH / TRANG */}
+      {totalPages > 1 && (
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 12,
+          marginTop: 28,
+          marginBottom: 10,
+          padding: '16px',
+          background: 'var(--color-surface)',
+          borderRadius: 'var(--radius-md)',
+          border: '1px solid var(--color-border)'
+        }}>
+          {/* Thông tin dòng */}
+          <div style={{ fontSize: 'var(--font-sm)', color: 'var(--color-text-sub)' }}>
+            Hiển thị ảnh <strong>{startIndex + 1}</strong> - <strong>{endIndex}</strong> trong tổng số <strong style={{ color: 'var(--color-primary)' }}>{filteredPhotos.length}</strong> bức ảnh
+          </div>
+
+          {/* Các nút bấm phân trang */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+            {/* Nút Về trang đầu */}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => handlePageChange(1)}
+              disabled={safeCurrentPage === 1}
+              style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: safeCurrentPage === 1 ? 0.4 : 1 }}
+              title="Trang đầu"
+            >
+              <ChevronsLeft size={16} />
+            </button>
+
+            {/* Nút Trang trước */}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => handlePageChange(safeCurrentPage - 1)}
+              disabled={safeCurrentPage === 1}
+              style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4, opacity: safeCurrentPage === 1 ? 0.4 : 1 }}
+            >
+              <ChevronLeft size={16} />
+              <span style={{ fontSize: 'var(--font-sm)' }}>Trước</span>
+            </button>
+
+            {/* Danh sách các số trang */}
+            {getPaginationNumbers().map((p, idx) => {
+              if (p === '...') {
+                return (
+                  <span key={`dots_${idx}`} style={{ padding: '0 6px', color: 'var(--color-text-sub)', fontSize: 14 }}>
+                    ...
+                  </span>
+                );
+              }
+
+              const isPageActive = p === safeCurrentPage;
+              return (
+                <button
+                  key={`page_${p}`}
+                  type="button"
+                  onClick={() => handlePageChange(p)}
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 'var(--radius-sm)',
+                    border: isPageActive ? '2px solid var(--color-primary)' : '1px solid var(--color-border)',
+                    background: isPageActive ? 'var(--color-primary)' : 'var(--color-surface)',
+                    color: isPageActive ? '#ffffff' : 'var(--color-text-main)',
+                    fontWeight: isPageActive ? 800 : 600,
+                    fontSize: 'var(--font-sm)',
+                    cursor: 'pointer',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  {p}
+                </button>
+              );
+            })}
+
+            {/* Nút Trang sau */}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => handlePageChange(safeCurrentPage + 1)}
+              disabled={safeCurrentPage === totalPages}
+              style={{ height: 36, padding: '0 12px', display: 'flex', alignItems: 'center', gap: 4, opacity: safeCurrentPage === totalPages ? 0.4 : 1 }}
+            >
+              <span style={{ fontSize: 'var(--font-sm)' }}>Sau</span>
+              <ChevronRight size={16} />
+            </button>
+
+            {/* Nút Tới trang cuối */}
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => handlePageChange(totalPages)}
+              disabled={safeCurrentPage === totalPages}
+              style={{ width: 36, height: 36, padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: safeCurrentPage === totalPages ? 0.4 : 1 }}
+              title="Trang cuối"
+            >
+              <ChevronsRight size={16} />
+            </button>
+          </div>
         </div>
       )}
     </div>
