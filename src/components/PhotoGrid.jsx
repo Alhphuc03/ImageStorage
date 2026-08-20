@@ -1,18 +1,22 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Heart, 
   Trash2, 
   Search, 
   X, 
   Calendar, 
-  Image as ImageIcon,
+  Image as ImageIcon, 
   Images,
   Play,
   Upload,
-  ArrowLeft
+  ArrowLeft,
+  ChevronDown,
+  Loader2
 } from 'lucide-react';
 import { speechAssistant } from '../services/speech';
 import { isPhotoVisible } from '../services/auth';
+
+const PAGE_SIZE = 24; // Mỗi lần chỉ hiển thị 24 ảnh, cuộn tới đâu tải tới đó để máy siêu mượt
 
 export default function PhotoGrid({
   photos = [],
@@ -31,6 +35,9 @@ export default function PhotoGrid({
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [internalFilterMode, setInternalFilterMode] = useState('all'); // 'all' | 'favorites'
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const sentinelRef = useRef(null);
 
   const filterMode = propFilterMode !== undefined ? propFilterMode : internalFilterMode;
   const setFilterMode = (mode) => {
@@ -69,6 +76,33 @@ export default function PhotoGrid({
     return true;
   });
 
+  // Tự động reset số ảnh hiển thị về 24 khi chuyển Album, đổi bộ lọc hoặc tìm kiếm
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [activeFolderId, filterMode, searchQuery]);
+
+  // Tự động nạp thêm ảnh khi cuộn tới cuối trang (Infinite Scroll qua IntersectionObserver)
+  useEffect(() => {
+    if (!sentinelRef.current) return;
+
+    const observer = new IntersectionObserver((entries) => {
+      if (entries[0].isIntersecting) {
+        setVisibleCount((prev) => {
+          if (prev < filteredPhotos.length) {
+            return Math.min(prev + PAGE_SIZE, filteredPhotos.length);
+          }
+          return prev;
+        });
+      }
+    }, { rootMargin: '300px' });
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [filteredPhotos.length]);
+
+  const visiblePhotos = filteredPhotos.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredPhotos.length;
+
   const getFolderName = (folderId) => {
     if (filterMode === 'favorites') return '❤️ Ảnh Yêu Thích';
     if (folderId === 'all') return '🌟 Tất Cả Hình Ảnh';
@@ -76,10 +110,15 @@ export default function PhotoGrid({
     return found ? `${found.icon || '📁'} ${found.name || ''}` : 'Album Ảnh';
   };
 
-  const handlePhotoClick = (index) => {
+  const handlePhotoClick = (indexInVisible) => {
     if (onOpenPhotoViewer) {
-      onOpenPhotoViewer(filteredPhotos, index);
+      // Khi click vào ảnh, truyền toàn bộ filteredPhotos để người dùng vẫn có thể vuốt xem tiếp trong Viewer
+      onOpenPhotoViewer(filteredPhotos, indexInVisible);
     }
+  };
+
+  const handleLoadMore = () => {
+    setVisibleCount((prev) => Math.min(prev + PAGE_SIZE, filteredPhotos.length));
   };
 
   return (
@@ -180,7 +219,11 @@ export default function PhotoGrid({
           <span>
             {activeFolderId ? getFolderName(activeFolderId) : filterMode === 'favorites' ? 'Ảnh Yêu Thích' : 'Tất Cả Ảnh'}
           </span>
-          <span className="section-title-badge">{filteredPhotos.length} ảnh</span>
+          <span className="section-title-badge">
+            {filteredPhotos.length > PAGE_SIZE 
+              ? `${visiblePhotos.length} / ${filteredPhotos.length} ảnh` 
+              : `${filteredPhotos.length} ảnh`}
+          </span>
         </h2>
 
         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -240,9 +283,9 @@ export default function PhotoGrid({
           </div>
         )}
 
-        {/* Danh sách ảnh */}
-        {filteredPhotos.length > 0 ? (
-          filteredPhotos.map((photo, idx) => {
+        {/* Danh sách ảnh đã được tối ưu hiển thị theo từng đợt */}
+        {visiblePhotos.length > 0 ? (
+          visiblePhotos.map((photo, idx) => {
             if (!photo) return null;
             const canDelete = isEditMode && currentUser?.role !== 'viewer' && (
               currentUser?.role === 'admin' || photo.createdBy === currentUser?.username
@@ -255,13 +298,14 @@ export default function PhotoGrid({
                 onClick={() => handlePhotoClick(idx)}
                 style={{ cursor: 'pointer' }}
               >
-                {/* Khung ảnh thumbnail */}
+                {/* Khung ảnh thumbnail với lazy load */}
                 <div className="photo-thumb-container">
                   <img 
                     src={photo.url} 
                     alt={photo.title || 'Ảnh'} 
                     className="photo-thumb"
                     loading="lazy"
+                    decoding="async"
                   />
 
                   {/* Huy hiệu riêng tư 🔒 */}
@@ -354,6 +398,29 @@ export default function PhotoGrid({
           </div>
         )}
       </div>
+
+      {/* Điểm neo tự động load thêm khi cuộn tới đáy & Nút Xem thêm */}
+      {hasMore && (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', margin: '24px 0 10px', gap: 10 }}>
+          <div ref={sentinelRef} style={{ height: 20 }} />
+          
+          <button
+            type="button"
+            className="btn-secondary"
+            onClick={handleLoadMore}
+            style={{
+              padding: '10px 24px',
+              borderRadius: 'var(--radius-full)',
+              fontWeight: 700,
+              fontSize: 'var(--font-sm)',
+              boxShadow: 'var(--shadow-sm)'
+            }}
+          >
+            <ChevronDown size={18} />
+            <span>Xem thêm ảnh ({filteredPhotos.length - visibleCount} ảnh còn lại)</span>
+          </button>
+        </div>
+      )}
     </div>
   );
 }
